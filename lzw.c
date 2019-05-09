@@ -111,7 +111,7 @@ bool lzw_next_char(uint8_t c) {
 
 bool update_length() {
   if (biggest_one(lzw_next_key) > lzw_length) {
-    printf("Updating length! %d %d -> %d\n", lzw_next_key, lzw_length, lzw_length+1);
+    //printf("Updating length! %d %d -> %d\n", lzw_next_key, lzw_length, lzw_length+1);
     lzw_length++;
     char** new_buff = calloc(1<<lzw_length, sizeof(char*));
     memcpy(new_buff, lzw_key_to_str, sizeof(char*)*(1<<(lzw_length-1)));
@@ -135,7 +135,7 @@ void init_lzw() {
     lzw_next_char((char)i);
     update_length();
   }
-  //fprintf(stderr, "lzw_length = %d\n", lzw_length);
+  fprintf(stderr, "lzw_length = %d\n", lzw_length);
   assert(lzw_length == 9);
 }
 
@@ -146,9 +146,9 @@ void encode() {
   while (c != EOF) {
     bool newString = lzw_next_char(c);
     if (newString) {
-      printf("encoding: %s (%d): ", curr->str, curr->key);
+      //printf("encoding: %s (%d): ", curr->str, curr->key);
       emit(curr->key, lzw_length, stdout);
-      printf("\n");
+      //printf("\n");
       curr = root;
       ungetc(c, stdin);
       update_length();
@@ -164,28 +164,46 @@ void encode() {
 
 uint32_t readBuffer = 0;
 uint32_t readBufferLength = 0;
-void readbits(uint32_t* v, uint8_t l, FILE* i) {
+const uint32_t MAX_BUFFER_LEN = sizeof(uint32_t)*8;
+bool readbits(uint32_t* v, uint8_t l, FILE* i) {
   while (readBufferLength < l) {
     int c = fgetc(i);
+    //fprintf(stderr, "Read in byte: %X\n", c);
     //?
     if (c == EOF) {
+      assert(readBufferLength == 0);
+      return false;
     }
     else {
+      //fprintf(stderr, "readBuffer before: %X\n", readBuffer);
       readBuffer <<= 8;
       readBufferLength += 8;
-      readBuffer |= (char) c;
+      readBuffer |= c;
+      //fprintf(stderr, "readBuffer after: %X\n", readBuffer);
     }
   }
   uint32_t readBufferCopy = readBuffer;
   // move the data we care about to the lower-order bits.
-  readBufferCopy >>= (l - readBufferLength);
+  readBufferCopy >>= (readBufferLength - l);
+  //fprintf(stderr, "readBufferCopy after slide (%d): %X\n", l - readBufferLength, readBufferCopy);
   // erase the topmost bits
-  readBufferCopy <<= (sizeof(uint32_t) * 8) - l;
-  readBufferCopy >>= (sizeof(uint32_t) * 8) - l;
+  readBufferCopy <<= MAX_BUFFER_LEN - l;
+  readBufferCopy >>= MAX_BUFFER_LEN - l;
+  //fprintf(stderr, "readBufferCopy after erase: %X\n", readBufferCopy);
   // copy the result!
   *v = readBufferCopy;
   // we can leave the garbage in our buffer.
   readBufferLength -= l;
+  return true;
+}
+void pushbits(uint32_t oldkey, uint8_t oldlen) {
+  //fprintf(stdout, "\n%X %d %X %d\n", readBuffer, readBufferLength, oldkey, oldlen);
+  assert(MAX_BUFFER_LEN - readBufferLength >= oldlen);
+  // TODO assert that if we leftshift oldkey, we won't lose any bits (oldkey is small enough);
+  oldkey <<= readBufferLength;
+  readBuffer |= oldkey;
+  readBufferLength += oldlen;
+  //fprintf(stdout, "\n%X %d\n", readBuffer, readBufferLength);
 }
 
 bool lzw_valid_key(uint32_t k) {
@@ -193,11 +211,27 @@ bool lzw_valid_key(uint32_t k) {
   return lzw_key_to_str[k] != NULL;
 }
 
+void debug_key(int key, int len) {
+  printf("\nencoding: ");
+  int mask = 1 << (len-1);
+  for (int i = 0; i < len; ++i) {
+    if (mask & key) {
+      printf("1");
+    }
+    else {
+      printf("0");
+    }
+    mask >>= 1;
+  }
+  printf("\n");
+}
+
 void decode() {
   init_lzw();
 
   uint32_t currKey, nextKey;
   readbits(&currKey, lzw_length, stdin);
+  //fprintf(stderr, "Read initial key: %d\n", currKey);
   assert(biggest_one(currKey) <= 8);
   char* currString = lzw_key_to_str[currKey];
   assert(strlen(currString) == 1);
@@ -207,24 +241,36 @@ void decode() {
       fputc(currString[i], stdout);
       bool newString = lzw_next_char(currString[i]);
       assert(!newString);
+      fflush(stdout);
     }
-    readbits(&nextKey, lzw_length, stdin);
+    bool newBits = readbits(&nextKey, lzw_length, stdin);
+    if (!newBits) break;
+
     char newChar = '\0';
+    bool refresh = false;
     if (lzw_valid_key(nextKey)) {
       newChar = lzw_key_to_str[nextKey][0];
     }
     else {
+      refresh = true;
       newChar = currString[0];
     }
     bool newString = lzw_next_char(newChar);
     assert(newString);
-    update_length();
+    refresh |= update_length();
+    curr = root;
 
+    // we have to look up the key as the new length
+    if (refresh) {
+      pushbits(nextKey, lzw_length-1);
+      readbits(&nextKey, lzw_length, stdin);
+    }
     assert(lzw_valid_key(nextKey));
+    //debug_key(nextKey, lzw_length);
     currString = lzw_key_to_str[nextKey];
   }
 }
 
 int main(int argc, char* argv[]) {
-  encode();
+  decode();
 }
