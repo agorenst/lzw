@@ -4,9 +4,15 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+
+char getopt(int, char*[], const char*);
+
+bool debugMode = false;
 
 uint8_t buffer = 0;
 uint8_t bufferSize = 0;
+uint8_t MAX_BUFFER_SIZE = sizeof(uint8_t) * 8;
 void emit(uint32_t v, uint8_t l, FILE* o) {
   for (uint8_t i = 0; i < l; ++i) {
     assert(bufferSize < 8);
@@ -33,15 +39,6 @@ void end(FILE* o) {
   }
 }
 
-// this is for debugging purposes
-void debug_emit(uint32_t v, uint8_t l, FILE* o) {
-  for (uint8_t i = 0; i < l; ++i) {
-    uint32_t mask = 1 << (l - (i+1));
-    uint32_t bit = v & mask;
-    bit >>= (l-i)-1;
-    fputc(bit ? '1' : '0', o);
-  }
-}
 
 // This was a test to make sure we were doing the bit
 // arithmetic in "emit" correctly.
@@ -58,7 +55,6 @@ void exercise_emit() {
 
 typedef struct lzw_node_tag {
   int key;
-  char* str;
   struct lzw_node_tag* children[256];
 } lzw_node_t;
 typedef lzw_node_t* lzw_node_p;
@@ -69,11 +65,26 @@ lzw_node_p root = NULL;
 lzw_node_p curr = NULL;
 char** lzw_key_to_str = NULL;
 
+// this is for debugging purposes
+void debug_emit(uint32_t v, uint8_t l, FILE* o) {
+  for (uint8_t i = 0; i < l; ++i) {
+    uint32_t mask = 1 << (l - (i+1));
+    uint32_t bit = v & mask;
+    bit >>= (l-i)-1;
+    fputc(bit ? '1' : '0', o);
+  }
+  char debug_str[256];
+  strcpy(debug_str, lzw_key_to_str[v]);
+  for (int i = 0; i < strlen(debug_str); ++i) {
+    if (debug_str[i] == '\n') debug_str[i] = '_';
+  }
+  printf(" %s", debug_str);
+  fputc('\n', o);
+}
+
 int biggest_one(int v) {
-  //int o_v = v;
   for (int i = 0; i < 64; ++i) {
     if (!v) {
-      //fprintf(stderr, "biggest one of %d is %d\n", o_v, i);
       return i;
     }
     v >>= 1;
@@ -87,18 +98,13 @@ bool lzw_next_char(uint8_t c) {
     curr->children[c] = calloc(1, sizeof(lzw_node_t));
     curr->children[c]->key = lzw_next_key++;
 
-    // copy the string. Very wasteful!
-    uint32_t l = strlen(curr->str);
-    curr->children[c]->str = calloc(l+2, 1);
-    strcpy(curr->children[c]->str, curr->str);
-    curr->children[c]->str[l] = (char) c;
-    curr->children[c]->str[l+1] = '\0';
-
-    char* childstring = curr->children[c]->str;
-    char** table_string = &lzw_key_to_str[curr->children[c]->key];
-    assert(*table_string == NULL);
-    *table_string = calloc(1, strlen(childstring)+1);
-    strcpy(*table_string, childstring);
+    char* currString = curr->key == -1 ? "" : lzw_key_to_str[curr->key];
+    uint32_t l = strlen(currString);
+    char** table_string = &lzw_key_to_str[lzw_next_key-1];
+    *table_string = calloc(l+2, 1);
+    strcpy(*table_string, currString);
+    (*table_string)[l] = (char) c;
+    (*table_string)[l+1] = '\0';
 
     // we DON'T update curr here.
     return true;
@@ -128,8 +134,6 @@ void init_lzw() {
   root = (lzw_node_p) calloc(1, sizeof(lzw_node_t));
   curr = root;
   root->key = -1;
-  root->str = calloc(1, 1);
-  root->str[0] = '\0';
   lzw_key_to_str = calloc(1<<lzw_length, sizeof(char*));
   for (int i = 0; i < 256; ++i) {
     lzw_next_char((char)i);
@@ -146,9 +150,8 @@ void encode() {
   while (c != EOF) {
     bool newString = lzw_next_char(c);
     if (newString) {
-      //printf("encoding: %s (%d): ", curr->str, curr->key);
-      emit(curr->key, lzw_length, stdout);
-      //printf("\n");
+      if (debugMode) debug_emit(curr->key, lzw_length, stdout);
+      else emit(curr->key, lzw_length, stdout);
       curr = root;
       ungetc(c, stdin);
       update_length();
@@ -156,7 +159,8 @@ void encode() {
     c = getchar();
   }
   if (curr != root) {
-    emit(curr->key, lzw_length, stdout);
+    if (debugMode) debug_emit(curr->key, lzw_length, stdout);
+    else emit(curr->key, lzw_length, stdout);
     curr = root;
   }
   end(stdout);
@@ -171,6 +175,10 @@ bool readbits(uint32_t* v, uint8_t l, FILE* i) {
     //fprintf(stderr, "Read in byte: %X\n", c);
     //?
     if (c == EOF) {
+      if (readBufferLength != 0) {
+        fprintf(stderr, "Error, nonempty read buffer on EOF: %X %d\n",
+            readBuffer, readBufferLength);
+      }
       assert(readBufferLength == 0);
       return false;
     }
@@ -207,12 +215,11 @@ void pushbits(uint32_t oldkey, uint8_t oldlen) {
 }
 
 bool lzw_valid_key(uint32_t k) {
-  assert(k < (1 << (lzw_length+1)));
+  assert(k < (1 << (lzw_length)));
   return lzw_key_to_str[k] != NULL;
 }
 
 void debug_key(int key, int len) {
-  printf("\nencoding: ");
   int mask = 1 << (len-1);
   for (int i = 0; i < len; ++i) {
     if (mask & key) {
@@ -223,6 +230,12 @@ void debug_key(int key, int len) {
     }
     mask >>= 1;
   }
+  char debug_str[256];
+  strcpy(debug_str, lzw_key_to_str[key]);
+  for (int i = 0; i < strlen(debug_str); ++i) {
+    if (debug_str[i] == '\n') debug_str[i] = '_';
+  }
+  printf(" %s", debug_str);
   printf("\n");
 }
 
@@ -231,14 +244,14 @@ void decode() {
 
   uint32_t currKey, nextKey;
   readbits(&currKey, lzw_length, stdin);
-  //fprintf(stderr, "Read initial key: %d\n", currKey);
+  if (debugMode) debug_key(currKey, lzw_length);
   assert(biggest_one(currKey) <= 8);
   char* currString = lzw_key_to_str[currKey];
   assert(strlen(currString) == 1);
 
   for (;;) {
     for (int i = 0; i < strlen(currString); ++i) {
-      fputc(currString[i], stdout);
+      if (!debugMode) fputc(currString[i], stdout);
       bool newString = lzw_next_char(currString[i]);
       assert(!newString);
       fflush(stdout);
@@ -252,6 +265,7 @@ void decode() {
       newChar = lzw_key_to_str[nextKey][0];
     }
     else {
+      printf("invalid key!\n");
       refresh = true;
       newChar = currString[0];
     }
@@ -262,15 +276,34 @@ void decode() {
 
     // we have to look up the key as the new length
     if (refresh) {
+      printf("refreshing!\n");
       pushbits(nextKey, lzw_length-1);
       readbits(&nextKey, lzw_length, stdin);
     }
     assert(lzw_valid_key(nextKey));
-    //debug_key(nextKey, lzw_length);
+    if (debugMode) debug_key(nextKey, lzw_length);
     currString = lzw_key_to_str[nextKey];
   }
 }
 
 int main(int argc, char* argv[]) {
-  decode();
+  bool doDecode = false;
+  bool doEncode = false;
+  char c;
+  while ((c = getopt(argc, argv, "deg")) != -1) {
+    switch (c) {
+      case 'd': doDecode = true; break;
+      case 'e': doEncode = true; break;
+      case 'g': debugMode = true; break;
+    }
+  }
+  if (doEncode == doDecode) {
+    printf("Error, must uniquely choose encode or decode\n");
+    return 1;
+  }
+  if (doEncode) {
+    encode();
+  } else {
+    decode();
+  }
 }
