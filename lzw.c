@@ -20,11 +20,15 @@ lzw_node_p root = NULL;
 lzw_node_p curr = NULL;
 uint32_t lzw_length = 1;
 uint32_t lzw_next_key = 0;
+uint32_t lzw_max_key = 0;
 
 
 char getopt(int, char*[], const char*);
+char* optarg;
 
 bool debugMode = false;
+bool verboseMode = false;
+bool doStats = false;
 void debug_emit(uint32_t v, uint8_t l, FILE* o);
 
 
@@ -74,9 +78,6 @@ int biggest_one(int v) {
 bool key_requires_bigger_length(uint32_t k) {
   return biggest_one(k) > lzw_length;
 }
-uint32_t get_next_key() {
-  return lzw_next_key++;
-}
 
 void print_uint32_t_bin(uint32_t x) {
   for (int32_t i = 31; i >= 0; i--) {
@@ -97,29 +98,29 @@ void debug_emit(uint32_t v, uint8_t l, FILE* o) {
 
 bool lzw_next_char(uint8_t c) {
   if (debugMode) fprintf(stderr, "nextchar: 0x%X\n", c);
-  if (curr->children[c] == NULL) {
+  if (curr->children[c]) {
+    if (debugMode) fprintf(stderr, "key %u -> key %u\n", curr->key, curr->children[c]->key);
+    curr = curr->children[c];
+    return false;
+  }
+
+  if (!lzw_max_key || lzw_next_key < lzw_max_key) {
     const uint32_t l = curr->key == -1 ? 0 : lzw_data[curr->key].len;
-    const uint32_t k = get_next_key();
+    const uint32_t k = lzw_next_key++;
     curr->children[c] = calloc(1, sizeof(lzw_node_t));
     curr->children[c]->key = k;
     lzw_data[k].len = l+1;
     uint8_t** table_string = &(lzw_data[k].data);
-
     *table_string = calloc(l+1, sizeof(uint8_t));
     if (l) {
       uint8_t* currString = lzw_data[curr->key].data;
       memcpy(*table_string, currString, l*sizeof(uint8_t));
     }
     (*table_string)[l] = c;
+  }
 
-    // we DON'T update curr here.
-    return true;
-  }
-  else {
-    if (debugMode) fprintf(stderr, "key %u -> key %u\n", curr->key, curr->children[c]->key);
-    curr = curr->children[c];
-    return false;
-  }
+  // we DON'T update curr here.
+  return true;
 }
 
 void do_len_update() {
@@ -264,15 +265,19 @@ void decode() {
   }
 }
 
+
 int main(int argc, char* argv[]) {
   bool doDecode = false;
   bool doEncode = false;
   char c;
-  while ((c = getopt(argc, argv, "deg")) != -1) {
+  while ((c = getopt(argc, argv, "degvsm:")) != -1) {
     switch (c) {
       case 'd': doDecode = true; break;
       case 'e': doEncode = true; break;
       //case 'g': debugMode = true; break;
+      case 'v': verboseMode = true; break;
+      case 's': doStats = true; break;
+      case 'm': lzw_max_key = atoi(optarg); break;
       default: break;
     }
   }
@@ -280,9 +285,17 @@ int main(int argc, char* argv[]) {
     printf("Error, must uniquely choose encode or decode\n");
     return 1;
   }
+  if (lzw_max_key && lzw_max_key < 256) {
+    printf("Error, max key too small (need >= 256, got %u)\n", lzw_max_key);
+    return 2;
+  }
   if (doEncode) {
     encode();
   } else {
     decode();
   }
+  if (doStats) {
+    fprintf(stderr, "Stats: lzw_length = %u, lzw_next_key = %u\n", lzw_length, lzw_next_key);
+  }
+  return 0;
 }
