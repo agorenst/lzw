@@ -1,12 +1,14 @@
 CC=clang
-CFLAGS=-Wall -Werror -g -fsanitize=address,undefined -std=c99 -pedantic -O2
-#CFLAGS=-Wall -Werror -g -std=c99 -pedantic
+#CFLAGS=-Wall -Werror -g -fsanitize=address,undefined -std=c99 -pedantic -O2
+CFLAGS=-Wall -Werror -g -std=c99 -pedantic
 
 lzw:
 
 test: lzw
 	cat lzw.c | ./lzw -e -g 2> encode_log.txt | ./lzw -d -g 2> decode_log.txt | diff lzw.c -
 
+test2: lzw
+	cat test2.txt | ./lzw -e -g 2> encode_log.txt | ./lzw -d -g 2> decode_log.txt | diff test2.txt -
 test1: lzw
 	cat test1.txt | ./lzw -e -g 2> encode_log.txt | ./lzw -d -g 2> decode_log.txt | diff test1.txt -
 kennedy: lzw

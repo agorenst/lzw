@@ -63,13 +63,34 @@ bool lzw_next_char(uint8_t c) {
 // update the length
 void lzw_len_update() {
   DEBUG(1, "Updating length! %d %d -> %d\n", lzw_next_key, lzw_length, lzw_length+1);
-
   lzw_length++;
   lzw_data_t* new_data = calloc(1<<lzw_length, sizeof(lzw_data_t));
   memcpy(new_data, lzw_data, sizeof(lzw_data_t)*(1<<(lzw_length-1)));
   lzw_data_t* tmp = lzw_data;
   lzw_data = new_data;
   free(tmp);
+}
+
+// We also want to destroy our tree, ultimately
+void lzw_destroy_tree(lzw_node_p t) {
+  for (uint16_t i = 0; i < 256; ++i) {
+    if (t->children[i]) {
+      lzw_destroy_tree(t->children[i]);
+    }
+  }
+  free(t);
+}
+
+void lzw_destroy_state(void) {
+  lzw_destroy_tree(root);
+  curr = NULL;
+  root = NULL;
+  for (uint32_t i = 0; i < lzw_next_key; ++i) {
+    if (lzw_data[i].data) free(lzw_data[i].data);
+  }
+  free(lzw_data);
+  lzw_next_key = 0;
+  lzw_length = 1;
 }
 
 char getopt(int, char*[], const char*);
@@ -169,7 +190,6 @@ void init_lzw() {
 }
 
 void encode() {
-  init_lzw();
 
   int c = getchar();
   while (c != EOF) {
@@ -197,8 +217,15 @@ bool readbits(uint32_t* v, uint8_t l, FILE* i) {
     int c = fgetc(i);
     if (c == EOF) {
       if (readBufferLength != 0) {
-        readBuffer <<= (8 - readBufferLength);
-        readBufferLength = 8;
+        while (readBufferLength < l) {
+          readBuffer <<= 1;
+          readBufferLength++;
+        }
+        *v = readBuffer;
+        *v &= (1 << readBufferLength) - 1;
+        readBufferLength = 0;
+        fprintf(stderr, "Special EOF case: %X\n", *v);
+        return *v != 0;
       }
       return false;
     }
@@ -223,51 +250,42 @@ void pushbits(uint32_t oldkey, uint8_t oldlen) {
 }
 
 bool lzw_valid_key(uint32_t k) {
+  if (k > (1 << (lzw_length))) {
+    fprintf(stderr, "Error, invalid key: %X\n", k);
+  }
   assert(k < (1 << (lzw_length)));
   return lzw_data[k].data != NULL;
 }
 
-void decode() {
-  init_lzw();
-
-  bool nextBits = true;
-  while (nextBits) {
-    uint32_t currKey;
-    nextBits = readbits(&currKey, lzw_length, stdin);
+void decode(FILE* in) {
+  uint32_t currKey;
+  while (readbits(&currKey, lzw_length, in)) {
     if (debugMode) fprintf(stderr, "key %X of %u bits\n", currKey, lzw_length);
     assert(lzw_valid_key(currKey));
-    uint8_t* currString = lzw_data[currKey].data;
-    const uint32_t l = lzw_data[currKey].len;
+    // emit that string:
+    uint8_t* s = lzw_data[currKey].data;
+    uint32_t l = lzw_data[currKey].len;
     assert(l);
-    for (int i = 0; i < l; ++i) {
-      fputc(currString[i], stdout);
-      bool b = lzw_next_char(currString[i]);
+    for (uint32_t i = 0; i < l; ++i) {
+      fputc(s[i], stdout);
+      bool b = lzw_next_char(s[i]);
       assert(!b);
     }
 
-    if (!nextBits) return;
-
-    uint32_t nextKey;
-
-    // we have to update the length in anticipation.
     if (key_requires_bigger_length(lzw_next_key+1)) {
       lzw_len_update();
     }
 
-    nextBits = readbits(&nextKey, lzw_length, stdin);
-    // put the newkey back.
-    pushbits(nextKey, lzw_length);
+    // peek at the next string:
+    bool valid = readbits(&currKey, lzw_length, in);
+    if (!valid) break;
+    pushbits(currKey, lzw_length);
 
-    uint8_t* nextString = currString;
-    if (lzw_valid_key(nextKey)) {
-      nextString = lzw_data[nextKey].data;
+    if (lzw_valid_key(currKey)) {
+      s = lzw_data[currKey].data;
     }
 
-    uint8_t c = nextString[0];
-    bool b = lzw_next_char(c);
-    assert(b || !nextBits);
-    bool uplen = update_length();
-    assert(!uplen);
+    lzw_next_char(s[0]);
     curr = root;
   }
 }
@@ -281,7 +299,7 @@ int main(int argc, char* argv[]) {
     switch (c) {
       case 'd': doDecode = true; break;
       case 'e': doEncode = true; break;
-      //case 'g': debugMode = true; break;
+      case 'g': debugMode = true; break;
       case 'v': verboseMode = true; break;
       case 's': doStats = true; break;
       case 'm': lzw_max_key = atoi(optarg); break;
@@ -296,13 +314,15 @@ int main(int argc, char* argv[]) {
     printf("Error, max key too small (need >= 256, got %u)\n", lzw_max_key);
     return 2;
   }
+  init_lzw();
   if (doEncode) {
     encode();
   } else {
-    decode();
+    decode(stdin);
   }
   if (doStats) {
     fprintf(stderr, "Stats: lzw_length = %u, lzw_next_key = %u\n", lzw_length, lzw_next_key);
   }
+  lzw_destroy_state();
   return 0;
 }
