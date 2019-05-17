@@ -9,12 +9,14 @@
 char getopt(int, char*[], const char*);
 
 bool debugMode = false;
+void debug_emit(uint32_t v, uint8_t l, FILE* o);
 
 
 uint8_t buffer = 0;
 uint8_t bufferSize = 0;
 uint8_t MAX_BUFFER_SIZE = sizeof(uint8_t) * 8;
 void emit(uint32_t v, uint8_t l, FILE* o) {
+  if (debugMode) fprintf(stderr, "key %X of %u bits\n", v, l);
   for (uint8_t i = 0; i < l; ++i) {
     assert(bufferSize < 8);
     buffer <<= 1;
@@ -84,12 +86,13 @@ void print_uint8_t_array(uint8_t* a, uint32_t l) {
 }
 void debug_emit(uint32_t v, uint8_t l, FILE* o) {
   print_uint32_t_bin(v);
-  fprintf(stderr, " ");
+  fprintf(stderr, " %u ", l);
   print_uint8_t_array(lzw_key_to_str[v], lzw_key_to_len[v]);
   fprintf(stderr, "\n");
 }
 
 bool lzw_next_char(uint8_t c) {
+  if (debugMode) fprintf(stderr, "nextchar: 0x%X\n", c);
   if (curr->children[c] == NULL) {
     const uint32_t l = curr->key == -1 ? 0 : lzw_key_to_len[curr->key];
     const uint32_t k = get_next_key();
@@ -109,6 +112,7 @@ bool lzw_next_char(uint8_t c) {
     return true;
   }
   else {
+    if (debugMode) fprintf(stderr, "key %u -> key %u\n", curr->key, curr->children[c]->key);
     curr = curr->children[c];
     return false;
   }
@@ -153,7 +157,7 @@ void init_lzw() {
   root->key = -1;
   lzw_key_to_str = calloc(1<<lzw_length, sizeof(uint8_t*));
   lzw_key_to_len = calloc(1<<lzw_length, sizeof(uint32_t));
-  for (uint8_t i = 0; i < (uint8_t)(i+1); ++i) {
+  for (uint16_t i = 0; i < 256; ++i) {
     lzw_next_char(i);
     update_length();
   }
@@ -168,9 +172,7 @@ void encode() {
   while (c != EOF) {
     bool newString = lzw_next_char(c);
     if (newString) {
-      if (debugMode) fprintf(stderr, "capping char: 0x%X\n", (uint8_t) c);
-      if (debugMode) debug_emit(curr->key, lzw_length, stdout);
-      else emit(curr->key, lzw_length, stdout);
+      emit(curr->key, lzw_length, stdout);
       curr = root;
       ungetc(c, stdin);
       update_length();
@@ -178,8 +180,7 @@ void encode() {
     c = getchar();
   }
   if (curr != root) {
-    if (debugMode) debug_emit(curr->key, lzw_length, stdout);
-    else emit(curr->key, lzw_length, stdout);
+    emit(curr->key, lzw_length, stdout);
     curr = root;
   }
   end(stdout);
@@ -229,15 +230,19 @@ void decode() {
   bool nextBits = true;
   while (nextBits) {
     uint32_t currKey;
-    readbits(&currKey, lzw_length, stdin);
+    nextBits = readbits(&currKey, lzw_length, stdin);
+    if (debugMode) fprintf(stderr, "key %X of %u bits\n", currKey, lzw_length);
+    assert(lzw_valid_key(currKey));
     uint8_t* currString = lzw_key_to_str[currKey];
     const uint32_t l = lzw_key_to_len[currKey];
     assert(l);
     for (int i = 0; i < l; ++i) {
-      if (!debugMode) fputc(currString[i], stdout);
+      fputc(currString[i], stdout);
       bool b = lzw_next_char(currString[i]);
       assert(!b);
     }
+
+    if (!nextBits) return;
 
     uint32_t nextKey;
 
@@ -247,6 +252,8 @@ void decode() {
     }
 
     nextBits = readbits(&nextKey, lzw_length, stdin);
+    // put the newkey back.
+    pushbits(nextKey, lzw_length);
 
     uint8_t* nextString = currString;
     if (lzw_valid_key(nextKey)) {
@@ -254,11 +261,8 @@ void decode() {
     }
 
     uint8_t c = nextString[0];
-    lzw_next_char(c);
-    if (debugMode) fprintf(stderr, "capping char: 0x%X\n", c);
-    if (debugMode) debug_emit(currKey, lzw_length, stderr);
-    // put the newkey back.
-    pushbits(nextKey, lzw_length);
+    bool b = lzw_next_char(c);
+    assert(b || !nextBits);
     bool uplen = update_length();
     assert(!uplen);
     curr = root;
@@ -273,7 +277,8 @@ int main(int argc, char* argv[]) {
     switch (c) {
       case 'd': doDecode = true; break;
       case 'e': doEncode = true; break;
-      case 'g': debugMode = true; break;
+      //case 'g': debugMode = true; break;
+      default: break;
     }
   }
   if (doEncode == doDecode) {
