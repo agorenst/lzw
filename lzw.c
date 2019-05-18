@@ -89,18 +89,35 @@ void lzw_destroy_state(void) {
     if (lzw_data[i].data) free(lzw_data[i].data);
   }
   free(lzw_data);
-  lzw_next_key = 0;
+  lzw_next_key = 1;
   lzw_length = 1;
 }
 
-char getopt(int, char*[], const char*);
-char* optarg;
 
 bool debugMode = false;
 bool verboseMode = false;
 bool doStats = false;
 void debug_emit(uint32_t v, uint8_t l, FILE* o);
 
+// We encode the output as a sequence of bits, which can cause
+// complications if we need to say, emit, 13 bits.
+// We store things 8 bits at a time, to match fputc.
+typedef void (*lzw_emitter_t)(uint8_t);
+void lzw_default_emitter(uint8_t b) {
+  fputc(b, stdout);
+}
+lzw_emitter_t lzw_emitter = lzw_default_emitter;
+
+typedef uint32_t (*lzw_reader_t)(void);
+uint32_t lzw_default_reader(void) {
+  return getchar();
+}
+lzw_reader_t lzw_reader = lzw_default_reader;
+
+void lzw_default_unget(uint8_t b) {
+  ungetc(b, stdin);
+}
+lzw_emitter_t lzw_unget = lzw_default_unget;
 
 uint8_t buffer = 0;
 uint8_t bufferSize = 0;
@@ -117,7 +134,7 @@ void emit(uint32_t v, uint8_t l, FILE* o) {
     bufferSize++;
 
     if (bufferSize == 8) {
-      fputc(buffer, o);
+      lzw_emitter(buffer);
       buffer = 0;
       bufferSize = 0;
     }
@@ -141,8 +158,6 @@ int biggest_one(int v) {
   assert(0);
   return -1;
 }
-
-
 
 // this is a bit tricky: is it the next 
 bool key_requires_bigger_length(uint32_t k) {
@@ -190,17 +205,16 @@ void lzw_init() {
 }
 
 void encode() {
-
-  int c = getchar();
+  int c = lzw_reader();
   while (c != EOF) {
     bool newString = lzw_next_char(c);
     if (newString) {
       emit(curr->key, lzw_length, stdout);
       curr = root;
-      ungetc(c, stdin);
+      lzw_unget(c);
       update_length();
     }
-    c = getchar();
+    c = lzw_reader();
   }
   if (curr != root) {
     emit(curr->key, lzw_length, stdout);
@@ -212,9 +226,9 @@ void encode() {
 uint32_t readBuffer = 0;
 uint32_t readBufferLength = 0;
 const uint32_t MAX_BUFFER_LEN = sizeof(uint32_t)*8;
-bool readbits(uint32_t* v, uint8_t l, FILE* i) {
+bool readbits(uint32_t* v, uint8_t l) {
   while (readBufferLength < l) {
-    int c = fgetc(i);
+    uint32_t c = lzw_reader();
     if (c == EOF) {
       if (readBufferLength != 0) {
         while (readBufferLength < l) {
@@ -224,7 +238,7 @@ bool readbits(uint32_t* v, uint8_t l, FILE* i) {
         *v = readBuffer;
         *v &= (1 << readBufferLength) - 1;
         readBufferLength = 0;
-        fprintf(stderr, "Special EOF case: %X\n", *v);
+        //fprintf(stderr, "Special EOF case: %X\n", *v);
         // this may be a bug... what if the final symbol to be encoded is
         // value 0?
         return *v != 0;
@@ -259,9 +273,9 @@ bool lzw_valid_key(uint32_t k) {
   return lzw_data[k].data != NULL;
 }
 
-void decode(FILE* in) {
+void decode() {
   uint32_t currKey;
-  while (readbits(&currKey, lzw_length, in)) {
+  while (readbits(&currKey, lzw_length)) {
     if (debugMode) fprintf(stderr, "key %X of %u bits\n", currKey, lzw_length);
     assert(lzw_valid_key(currKey));
     // emit that string:
@@ -269,7 +283,7 @@ void decode(FILE* in) {
     uint32_t l = lzw_data[currKey].len;
     assert(l);
     for (uint32_t i = 0; i < l; ++i) {
-      fputc(s[i], stdout);
+      lzw_emitter(s[i]);
       bool b = lzw_next_char(s[i]);
       assert(!b);
     }
@@ -279,7 +293,7 @@ void decode(FILE* in) {
     }
 
     // peek at the next string:
-    bool valid = readbits(&currKey, lzw_length, in);
+    bool valid = readbits(&currKey, lzw_length);
     if (!valid) break;
     pushbits(currKey, lzw_length);
 
@@ -291,41 +305,4 @@ void decode(FILE* in) {
     assert(b);
     curr = root;
   }
-}
-
-
-int main(int argc, char* argv[]) {
-  bool doDecode = false;
-  bool doEncode = false;
-  char c;
-  while ((c = getopt(argc, argv, "degvsm:")) != -1) {
-    switch (c) {
-      case 'd': doDecode = true; break;
-      case 'e': doEncode = true; break;
-      //case 'g': debugMode = true; break;
-      case 'v': verboseMode = true; break;
-      case 's': doStats = true; break;
-      case 'm': lzw_max_key = atoi(optarg); break;
-      default: break;
-    }
-  }
-  if (doEncode == doDecode) {
-    printf("Error, must uniquely choose encode or decode\n");
-    return 1;
-  }
-  if (lzw_max_key && lzw_max_key < 256) {
-    printf("Error, max key too small (need >= 256, got %u)\n", lzw_max_key);
-    return 2;
-  }
-  lzw_init();
-  if (doEncode) {
-    encode();
-  } else {
-    decode(stdin);
-  }
-  if (doStats) {
-    fprintf(stderr, "Stats: lzw_length = %u, lzw_next_key = %u\n", lzw_length, lzw_next_key);
-  }
-  lzw_destroy_state();
-  return 0;
 }
