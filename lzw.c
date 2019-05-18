@@ -19,7 +19,7 @@ lzw_data_t* lzw_data = NULL;
 lzw_node_p root = NULL;
 lzw_node_p curr = NULL;
 uint32_t lzw_length = 1;
-uint32_t lzw_next_key = 0;
+uint32_t lzw_next_key = 1;
 uint32_t lzw_max_key = 0;
 
 // Before we get too much into executable code,
@@ -62,7 +62,7 @@ bool lzw_next_char(uint8_t c) {
 // We also have book-keeping of when we have to
 // update the length
 void lzw_len_update() {
-  DEBUG(1, "Updating length! %d %d -> %d\n", lzw_next_key, lzw_length, lzw_length+1);
+  DEBUG(1, "Updating length: %d %d -> %d\n", lzw_next_key, lzw_length, lzw_length+1);
   lzw_length++;
   lzw_data_t* new_data = calloc(1<<lzw_length, sizeof(lzw_data_t));
   memcpy(new_data, lzw_data, sizeof(lzw_data_t)*(1<<(lzw_length-1)));
@@ -176,7 +176,7 @@ bool update_length() {
   return false;
 }
 
-void init_lzw() {
+void lzw_init() {
   root = (lzw_node_p) calloc(1, sizeof(lzw_node_t));
   curr = root;
   root->key = -1;
@@ -225,6 +225,8 @@ bool readbits(uint32_t* v, uint8_t l, FILE* i) {
         *v &= (1 << readBufferLength) - 1;
         readBufferLength = 0;
         fprintf(stderr, "Special EOF case: %X\n", *v);
+        // this may be a bug... what if the final symbol to be encoded is
+        // value 0?
         return *v != 0;
       }
       return false;
@@ -285,7 +287,8 @@ void decode(FILE* in) {
       s = lzw_data[currKey].data;
     }
 
-    lzw_next_char(s[0]);
+    bool b = lzw_next_char(s[0]);
+    assert(b);
     curr = root;
   }
 }
@@ -299,7 +302,7 @@ int main(int argc, char* argv[]) {
     switch (c) {
       case 'd': doDecode = true; break;
       case 'e': doEncode = true; break;
-      case 'g': debugMode = true; break;
+      //case 'g': debugMode = true; break;
       case 'v': verboseMode = true; break;
       case 's': doStats = true; break;
       case 'm': lzw_max_key = atoi(optarg); break;
@@ -314,7 +317,7 @@ int main(int argc, char* argv[]) {
     printf("Error, max key too small (need >= 256, got %u)\n", lzw_max_key);
     return 2;
   }
-  init_lzw();
+  lzw_init();
   if (doEncode) {
     encode();
   } else {
