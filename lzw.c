@@ -114,11 +114,6 @@ uint32_t lzw_default_reader(void) {
 }
 lzw_reader_t lzw_reader = lzw_default_reader;
 
-void lzw_default_unget(uint8_t b) {
-  ungetc(b, stdin);
-}
-lzw_emitter_t lzw_unget = lzw_default_unget;
-
 uint8_t buffer = 0;
 uint8_t bufferSize = 0;
 uint8_t MAX_BUFFER_SIZE = sizeof(uint8_t) * 8;
@@ -204,17 +199,19 @@ void lzw_init() {
   //assert(lzw_length == 9);
 }
 
-void encode() {
+void lzw_encode() {
   int c = lzw_reader();
   while (c != EOF) {
     bool newString = lzw_next_char(c);
     if (newString) {
       emit(curr->key, lzw_length, stdout);
       curr = root;
-      lzw_unget(c);
       update_length();
+      // note that we don't update C here.
     }
-    c = lzw_reader();
+    else {
+      c = lzw_reader();
+    }
   }
   if (curr != root) {
     emit(curr->key, lzw_length, stdout);
@@ -226,6 +223,7 @@ void encode() {
 uint32_t readBuffer = 0;
 uint32_t readBufferLength = 0;
 const uint32_t MAX_BUFFER_LEN = sizeof(uint32_t)*8;
+
 bool readbits(uint32_t* v, uint8_t l) {
   while (readBufferLength < l) {
     uint32_t c = lzw_reader();
@@ -258,6 +256,7 @@ bool readbits(uint32_t* v, uint8_t l) {
   readBufferLength -= l;
   return true;
 }
+
 void pushbits(uint32_t oldkey, uint8_t oldlen) {
   assert(MAX_BUFFER_LEN - readBufferLength >= oldlen);
   oldkey <<= readBufferLength;
@@ -273,7 +272,7 @@ bool lzw_valid_key(uint32_t k) {
   return lzw_data[k].data != NULL;
 }
 
-void decode() {
+void lzw_decode() {
   uint32_t currKey;
   while (readbits(&currKey, lzw_length)) {
     if (debugMode) fprintf(stderr, "key %X of %u bits\n", currKey, lzw_length);

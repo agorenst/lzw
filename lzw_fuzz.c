@@ -28,10 +28,6 @@ uint32_t lzw_fuzzer_compress_reader() {
   //fprintf(stderr, "%s %X\n", __FUNCTION__, r);
   return r;
 }
-void lzw_fuzzer_compress_unget(uint8_t b) {
-  assert(fuzzerReader);
-  fuzzerReader--;
-}
 
 size_t cbreader = 0;
 uint32_t lzw_fuzzer_decompress_reader() {
@@ -52,11 +48,6 @@ void lzw_fuzzer_decompress_emitter(uint8_t b) {
   //fprintf(stderr, "%s %X\n", __FUNCTION__, b);
   DecompressedBuffer[dbwriter++] = b;
 }
-void lzw_fuzzer_decompress_unget(uint8_t b) {
-  assert(cbreader);
-  cbreader--;
-}
-
 
 int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
   FuzzerData = Data;
@@ -64,16 +55,14 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
 
   lzw_emitter = lzw_fuzzer_compress_emitter;
   lzw_reader = lzw_fuzzer_compress_reader;
-  lzw_unget = lzw_fuzzer_compress_unget;
   lzw_init();
-  encode();
+  lzw_encode();
   lzw_destroy_state();
 
   lzw_emitter = lzw_fuzzer_decompress_emitter;
   lzw_reader = lzw_fuzzer_decompress_reader;
-  lzw_unget = lzw_fuzzer_decompress_unget;
   lzw_init();
-  decode();
+  lzw_decode();
   lzw_destroy_state();
 
   if (!DecompressedBuffer) {

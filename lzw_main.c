@@ -35,9 +35,9 @@ int main(int argc, char* argv[]) {
   }
   lzw_init();
   if (doEncode) {
-    encode();
+    lzw_encode();
   } else {
-    decode();
+    lzw_decode();
   }
   if (doStats) {
     fprintf(stderr, "Stats: lzw_length = %u, lzw_next_key = %u\n", lzw_length, lzw_next_key);
