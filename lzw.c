@@ -14,9 +14,6 @@ typedef struct lzw_node_tag {
 typedef struct {
   uint8_t* data;
   uint32_t len;
-  uint32_t prev;
-  char c;
-  bool live; // zero-init means false.
 } lzw_data_t;
 lzw_data_t* lzw_data = NULL;
 lzw_node_p root = NULL;
@@ -34,7 +31,7 @@ int debugLevel = 0;
 // The primary action of this table is to ingest
 // the next byte, and maintain the correct encoding
 // information for the implicit string seen-so-far.
-// That's captured in this function:
+// That's capturedin this function:
 bool lzw_next_char(uint8_t c) {
   DEBUG(3, "nextchar: 0x%X\n", c);
   if (curr->children[c]) {
@@ -49,18 +46,15 @@ bool lzw_next_char(uint8_t c) {
   // Create the new fields for the new node
   const uint32_t k = lzw_next_key++;
   const uint32_t l = curr->key == -1 ? 0 : lzw_data[curr->key].len;
-  //uint8_t* data = calloc(l+1, sizeof(uint8_t));
-  //if (l) {
-  //  memcpy(data, lzw_data[curr->key].data, l*sizeof(uint8_t));
-  //}
-  //data[l] = c;
+  uint8_t* data = calloc(l+1, sizeof(uint8_t));
+  if (l) {
+    memcpy(data, lzw_data[curr->key].data, l*sizeof(uint8_t));
+  }
+  data[l] = c;
   // allocate the new node
   curr->children[c] = calloc(1, sizeof(lzw_node_t));
   curr->children[c]->key = k;
-  //lzw_data[k].data = data;
-  lzw_data[k].live = true;
-  lzw_data[k].prev = curr->key;
-  lzw_data[k].c = c;
+  lzw_data[k].data = data;
   lzw_data[k].len = l+1;
   return true;
 }
@@ -280,38 +274,7 @@ bool lzw_valid_key(uint32_t k) {
     fprintf(stderr, "Error, invalid key: %X\n", k);
   }
   assert(k < (1 << (lzw_length)));
-  return lzw_data[k].live;
-  //return lzw_data[k].data != NULL;
-}
-
-char emit_keyed_string(int end_key) {
-  static char* buff = NULL;
-  static size_t buff_size = 0;
-
-  size_t string_len = lzw_data[end_key].len;
-  assert(string_len);
-  if (buff_size < string_len) {
-    buff= realloc(buff, string_len);
-    buff_size = string_len;
-  }
-  for (uint32_t i = 0; i < string_len; i++) {
-    buff[(string_len-1)-i] = lzw_data[end_key].c;
-    end_key = lzw_data[end_key].prev;
-  }
-    for (uint32_t i = 0; i < string_len; i++) {
-      lzw_emitter(buff[i]);
-      bool b = lzw_next_char(buff[i]);
-      assert(!b);
-    }
-    return buff[0];
-}
-
-char find_first_char(int end_key) {
-  size_t l = lzw_data[end_key].len;
-  for (uint32_t i = 0; i < l-1; i++) {
-    end_key = lzw_data[end_key].prev;
-  }
-  return lzw_data[end_key].c;
+  return lzw_data[k].data != NULL;
 }
 
 void lzw_decode() {
@@ -320,16 +283,14 @@ void lzw_decode() {
     if (debugMode) fprintf(stderr, "key %X of %u bits\n", currKey, lzw_length);
     assert(lzw_valid_key(currKey));
     // emit that string:
-    char first_char = emit_keyed_string(currKey);
-    //uint8_t* s = lzw_data[currKey].data;
-    //uint32_t l = lzw_data[currKey].len;
-    //assert(l);
-    //for (uint32_t i = 0; i < l; ++i) {
-    //  lzw_emitter(s[i]);
-    //  bool b = lzw_next_char(s[i]);
-    //  assert(!b);
-    //}
-    //char first_char = s[0];
+    uint8_t* s = lzw_data[currKey].data;
+    uint32_t l = lzw_data[currKey].len;
+    assert(l);
+    for (uint32_t i = 0; i < l; ++i) {
+      lzw_emitter(s[i]);
+      bool b = lzw_next_char(s[i]);
+      assert(!b);
+    }
 
     if (key_requires_bigger_length(lzw_next_key+1)) {
       lzw_len_update();
@@ -341,11 +302,10 @@ void lzw_decode() {
     pushbits(currKey, lzw_length);
 
     if (lzw_valid_key(currKey)) {
-      //first_char = lzw_data[currKey].data[0];
-      first_char = find_first_char(currKey);
+      s = lzw_data[currKey].data;
     }
 
-    bool b = lzw_next_char(first_char);
+    bool b = lzw_next_char(s[0]);
     assert(b);
     curr = root;
   }
