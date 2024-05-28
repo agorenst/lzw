@@ -1,6 +1,6 @@
 CC=clang
 #CFLAGS=-Wall -Werror -g -fsanitize=address,undefined -std=c99 -pedantic
-CFLAGS=-Wall -Werror -g -std=c99 -pedantic
+CFLAGS=-Wall -Werror -g -std=c99 -pedantic -O2
 
 lzw_main: lzw.o
 
