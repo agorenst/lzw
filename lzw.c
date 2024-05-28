@@ -97,7 +97,7 @@ void lzw_destroy_state(void) {
 bool debugMode = false;
 bool verboseMode = false;
 bool doStats = false;
-void debug_emit(uint32_t v, uint8_t l, FILE* o);
+void debug_emit(uint32_t v, uint8_t l);
 
 // We encode the output as a sequence of bits, which can cause
 // complications if we need to say, emit, 13 bits.
@@ -117,7 +117,7 @@ lzw_reader_t lzw_reader = lzw_default_reader;
 uint8_t buffer = 0;
 uint8_t bufferSize = 0;
 uint8_t MAX_BUFFER_SIZE = sizeof(uint8_t) * 8;
-void emit(uint32_t v, uint8_t l, FILE* o) {
+void emit(uint32_t v, uint8_t l) {
   if (debugMode) fprintf(stderr, "key %X of %u bits\n", v, l);
   for (uint8_t i = 0; i < l; ++i) {
     assert(bufferSize < 8);
@@ -136,12 +136,12 @@ void emit(uint32_t v, uint8_t l, FILE* o) {
   }
 }
 
-void debug_emit(uint32_t v, uint8_t l, FILE* o);
-void end(FILE* o) {
+void debug_emit(uint32_t v, uint8_t l);
+void end(void) {
   // we can do this as a single constant, but hold on.
   while (bufferSize != 0) {
-    if (debugMode) debug_emit(0, 1, stderr);
-    emit(0, 1, o);
+    if (debugMode) debug_emit(0, 1);
+    emit(0, 1);
   }
 }
 
@@ -171,7 +171,7 @@ void print_uint8_t_array(uint8_t* a, uint32_t l) {
     fprintf(stderr, "0x%X", a[i]);
   }
 }
-void debug_emit(uint32_t v, uint8_t l, FILE* o) {
+void debug_emit(uint32_t v, uint8_t l) {
   print_uint32_t_bin(v);
   fprintf(stderr, " %u ", l);
   print_uint8_t_array(lzw_data[v].data, lzw_data[v].len);
@@ -206,7 +206,7 @@ void lzw_encode() {
   while (c != EOF) {
     bool newString = lzw_next_char(c);
     if (newString) {
-      emit(curr->key, lzw_length, stdout);
+      emit(curr->key, lzw_length);
       curr = root;
       update_length();
       // note that we don't update C here.
@@ -216,10 +216,10 @@ void lzw_encode() {
     }
   }
   if (curr != root) {
-    emit(curr->key, lzw_length, stdout);
+    emit(curr->key, lzw_length);
     curr = root;
   }
-  end(stdout);
+  end();
 }
 
 uint64_t readBuffer = 0;
