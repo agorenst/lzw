@@ -25,8 +25,8 @@ uint32_t lzw_max_key = 0;
 // Before we get too much into executable code,
 // we want to express the different modes we can run in.
 // I.e., debug levels
-int debugLevel = 0;
-#define DEBUG(l, ...) { if (debugLevel >= l) fprintf(stderr, __VA_ARGS__); }
+int lzw_debug_level = 0;
+#define DEBUG(l, ...) { if (lzw_debug_level >= l) fprintf(stderr, __VA_ARGS__); }
 
 // The primary action of this table is to ingest
 // the next byte, and maintain the correct encoding
@@ -94,9 +94,6 @@ void lzw_destroy_state(void) {
 }
 
 
-bool debugMode = false;
-bool verboseMode = false;
-bool doStats = false;
 void debug_emit(uint32_t v, uint8_t l);
 
 // We encode the output as a sequence of bits, which can cause
@@ -118,7 +115,7 @@ uint8_t buffer = 0;
 uint8_t bufferSize = 0;
 uint8_t MAX_BUFFER_SIZE = sizeof(uint8_t) * 8;
 void emit(uint32_t v, uint8_t l) {
-  if (debugMode) fprintf(stderr, "key %X of %u bits\n", v, l);
+  DEBUG(2, "key %X of %u bits\n", v, l);
   for (uint8_t i = 0; i < l; ++i) {
     assert(bufferSize < 8);
     buffer <<= 1;
@@ -140,7 +137,7 @@ void debug_emit(uint32_t v, uint8_t l);
 void end(void) {
   // we can do this as a single constant, but hold on.
   while (bufferSize != 0) {
-    if (debugMode) debug_emit(0, 1);
+    if (lzw_debug_level > 1) debug_emit(0, 1);
     emit(0, 1);
   }
 }
@@ -197,7 +194,7 @@ void lzw_init() {
     lzw_next_char(i);
     update_length();
   }
-  if (debugMode) fprintf(stderr, "lzw_length = %d\n", lzw_length);
+  DEBUG(2, "lzw_length = %d\n", lzw_length);
   //assert(lzw_length == 9);
 }
 
@@ -280,7 +277,7 @@ bool lzw_valid_key(uint32_t k) {
 void lzw_decode() {
   uint32_t currKey;
   while (readbits(&currKey, lzw_length)) {
-    if (debugMode) fprintf(stderr, "key %X of %u bits\n", currKey, lzw_length);
+    DEBUG(2, "key %X of %u bits\n", currKey, lzw_length);
     assert(lzw_valid_key(currKey));
     // emit that string:
     uint8_t* s = lzw_data[currKey].data;
