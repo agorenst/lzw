@@ -55,7 +55,7 @@ int main(int argc, char* argv[]) {
     printf("Error, max key too small (need >= 256, got %u)\n", lzw_max_key);
     return 2;
   }
-  lzw_stream_p s = lzw_init(NULL, NULL);
+  lzw_stream_p s = lzw_init(lzw_max_key, NULL, NULL);
   if (doEncode) {
     lzw_encode(s);
   } else {

@@ -8,7 +8,7 @@ typedef uint32_t (*lzw_reader_t)(void);
 
 void lzw_encode(lzw_stream_p);
 void lzw_decode(lzw_stream_p);
-lzw_stream_p lzw_init(lzw_reader_t, lzw_emitter_t);
+lzw_stream_p lzw_init(int, lzw_reader_t, lzw_emitter_t);
 void lzw_destroy_state(lzw_stream_p);
 
 extern int lzw_debug_level;
