@@ -53,17 +53,13 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
   FuzzerData = Data;
   FuzzerSize = Size;
 
-  lzw_emitter = lzw_fuzzer_compress_emitter;
-  lzw_reader = lzw_fuzzer_compress_reader;
-  lzw_init();
-  lzw_encode();
-  lzw_destroy_state();
+  lzw_stream_p s = lzw_init(0, lzw_fuzzer_compress_reader, lzw_fuzzer_compress_emitter);
+  lzw_encode(s);
+  lzw_destroy_state(s);
 
-  lzw_emitter = lzw_fuzzer_decompress_emitter;
-  lzw_reader = lzw_fuzzer_decompress_reader;
-  lzw_init();
-  lzw_decode();
-  lzw_destroy_state();
+  lzw_stream_p r = lzw_init(0, lzw_fuzzer_decompress_reader, lzw_fuzzer_decompress_emitter);
+  lzw_decode(r);
+  lzw_destroy_state(r);
 
   if (!DecompressedBuffer) {
     assert(Size == 0);

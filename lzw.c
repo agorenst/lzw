@@ -13,6 +13,7 @@ typedef struct lzw_node_tag {
   uint32_t key;
   struct lzw_node_tag *children[256];
 } lzw_node_t, *lzw_node_p;
+
 typedef struct {
   uint8_t *data;
   uint32_t len;
@@ -35,8 +36,6 @@ struct lzw_stream_t {
   uint64_t readBuffer;
   uint32_t readBufferLength;
 };
-
-lzw_stream_p default_stream;
 
 // Before we get too much into executable code,
 // we want to express the different modes we can run in.
@@ -111,8 +110,7 @@ void lzw_destroy_state(lzw_stream_p s) {
       free(s->data[i].data);
   }
   free(s->data);
-  s->next_key = 1;
-  s->data_length = 1;
+  free(s);
 }
 
 void lzw_default_emitter(uint8_t b) { fputc(b, stdout); }
