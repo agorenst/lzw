@@ -35,8 +35,9 @@ int bytes_decoded = 0;
 int main(int argc, char* argv[]) {
   bool doDecode = false;
   bool doEncode = false;
+  int lzw_max_key = 0;
   char c;
-  while ((c = getopt(argc, argv, "degvsm:")) != -1) {
+  while ((c = getopt(argc, argv, "deg:vsm:")) != -1) {
     switch (c) {
       case 'd': doDecode = true; break;
       case 'e': doEncode = true; break;
@@ -54,15 +55,15 @@ int main(int argc, char* argv[]) {
     printf("Error, max key too small (need >= 256, got %u)\n", lzw_max_key);
     return 2;
   }
-  lzw_init();
+  lzw_stream_p s = lzw_init(NULL, NULL);
   if (doEncode) {
-    lzw_encode();
+    lzw_encode(s);
   } else {
-    lzw_decode();
+    lzw_decode(s);
   }
-  if (doStats) {
-    fprintf(stderr, "Stats: lzw_length = %u, lzw_next_key = %u\n", lzw_length, lzw_next_key);
-  }
-  lzw_destroy_state();
+  //if (doStats) {
+  //  fprintf(stderr, "Stats: lzw_length = %u, lzw_next_key = %u\n", lzw_length, lzw_next_key);
+  //}
+  lzw_destroy_state(s);
   return 0;
 }
