@@ -57,7 +57,7 @@ int main(int argc, char* argv[]) {
   }
   lzw_stream_p s = lzw_init(lzw_max_key, NULL, NULL);
   if (doEncode) {
-    lzw_encode(s);
+    while (lzw_encode(s, 1));
   } else {
     lzw_decode(s);
   }

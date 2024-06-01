@@ -220,26 +220,31 @@ lzw_stream_p lzw_init(int max_key, lzw_reader_t r, lzw_emitter_t w) {
   return s;
 }
 
-void lzw_encode(lzw_stream_p s) {
+size_t lzw_encode(lzw_stream_p s, size_t l) {
   assert(s);
   assert(s->reader);
-  int c = s->reader();
-  while (c != EOF) {
-    bool newString = lzw_next_char(s, c);
-    if (newString) {
+  size_t i = 0;
+  for (; i < l; i++) {
+    int c = s->reader();
+    while (c != EOF) {
+      bool newString = lzw_next_char(s, c);
+      if (newString) {
+        emit(s, s->curr->key, s->data_length);
+        s->curr = s->root;
+        update_length(s);
+        // note that we don't update C here.
+      } else {
+        c = s->reader();
+      }
+    }
+    if (s->curr != s->root) {
       emit(s, s->curr->key, s->data_length);
       s->curr = s->root;
-      update_length(s);
-      // note that we don't update C here.
-    } else {
-      c = s->reader();
     }
+    end(s);
+    break;
   }
-  if (s->curr != s->root) {
-    emit(s, s->curr->key, s->data_length);
-    s->curr = s->root;
-  }
-  end(s);
+  return i;
 }
 
 const uint32_t MAX_BUFFER_LEN = sizeof(uint32_t) * 8;
