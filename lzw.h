@@ -10,7 +10,7 @@ void lzw_default_emitter(uint8_t b);
 uint32_t lzw_default_reader(void);
 
 size_t lzw_encode(lzw_stream_p, size_t);
-void lzw_decode(lzw_stream_p);
+size_t lzw_decode(lzw_stream_p, size_t);
 lzw_stream_p lzw_init(int, lzw_reader_t, lzw_emitter_t);
 void lzw_destroy_state(lzw_stream_p);
 

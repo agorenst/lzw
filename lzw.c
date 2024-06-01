@@ -300,9 +300,11 @@ bool lzw_valid_key(lzw_stream_p s, uint32_t k) {
   return s->data[k].data != NULL;
 }
 
-void lzw_decode(lzw_stream_p s) {
+size_t lzw_decode(lzw_stream_p s, size_t c) {
   uint32_t currKey;
+  size_t C = 0;
   while (readbits(s, &currKey, s->data_length)) {
+    C++;
     DEBUG(2, "key %X of %u bits\n", currKey, s->data_length);
     assert(lzw_valid_key(s, currKey));
     // emit that string:
@@ -333,4 +335,5 @@ void lzw_decode(lzw_stream_p s) {
     assert(b);
     s->curr = s->root;
   }
+  return C;
 }

@@ -57,9 +57,9 @@ int main(int argc, char* argv[]) {
   }
   lzw_stream_p s = lzw_init(lzw_max_key, NULL, NULL);
   if (doEncode) {
-    while (lzw_encode(s, 1));
+    while (2 == lzw_encode(s, 2));
   } else {
-    lzw_decode(s);
+    while (lzw_decode(s, 1));
   }
   //if (doStats) {
   //  fprintf(stderr, "Stats: lzw_length = %u, lzw_next_key = %u\n", lzw_length, lzw_next_key);
