@@ -56,7 +56,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
   lzw_emitter = lzw_fuzzer_compress_emitter;
   lzw_reader = lzw_fuzzer_compress_reader;
   lzw_init();
-  lzw_encode();
+  while (lzw_encode(1024));
+  lzw_encode_end_stream();
   lzw_destroy_state();
 
   lzw_emitter = lzw_fuzzer_decompress_emitter;

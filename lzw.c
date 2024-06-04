@@ -200,52 +200,16 @@ size_t lzw_encode(size_t l) {
     if (c == EOF) break;
     bool new_string = lzw_next_char(c);
     if (new_string) {
+      // Flush the current string
       emit(curr->key, lzw_length);
       curr = root;
       update_length();
+      // Now actually start with c
       lzw_next_char(c);
     }
   }
   return i;
 }
-
-//size_t lzw_encode(size_t l) {
-//  static int c = 0;
-//  static bool new_string = false;
-//  if (l == 0) return 0;
-//
-//  size_t i = 0;
-//  if (new_string) {
-//    emit(curr->key, lzw_length);
-//    curr = root;
-//    update_length();
-//  } else {
-//    i++;
-//    c = lzw_reader();
-//  }
-//
-//  new_string = lzw_next_char(c);
-//  while (i < l && c != EOF) {
-//    if (new_string) {
-//      emit(curr->key, lzw_length);
-//      curr = root;
-//      update_length();
-//    } else {
-//      c = lzw_reader();
-//      i++;
-//    }
-//    new_string = lzw_next_char(c);
-//  }
-//  return i;
-//}
-
-
-
-
-
-
-
-
 
 void lzw_encode_end_stream(void) {
   if (curr != root) {
@@ -264,36 +228,31 @@ uint32_t readBufferLength = 0;
 const uint32_t MAX_BUFFER_LEN = sizeof(uint32_t)*8;
 
 // This will read the next bits up to our buffer.
-bool readbits(uint32_t* v, uint8_t l) {
-  while (readBufferLength < l) {
+bool readbits(uint32_t *v) {
+  while (readBufferLength < lzw_length) {
     uint32_t c = lzw_reader();
     if (c != EOF) {
       readBuffer <<= 8;
+      readBuffer |= (uint8_t)c;
       readBufferLength += 8;
-      readBuffer |= (uint8_t) c;
-    }
-    else {
+    } else {
       if (readBufferLength != 0) {
-        while (readBufferLength < l) {
-          readBuffer <<= 1;
-          readBufferLength++;
-        }
+        // Read in the trailing zeros.
+        readBuffer <<= (lzw_length - readBufferLength);
+        readBufferLength = lzw_length;
         *v = readBuffer;
         *v &= (1 << readBufferLength) - 1;
         readBufferLength = 0;
-        //fprintf(stderr, "Special EOF case: %X\n", *v);
-        // this may be a bug... what if the final symbol to be encoded is
-        // value 0?
         return *v != 0;
       }
       return false;
     }
   }
   uint32_t readBufferCopy = readBuffer;
-  readBufferCopy >>= (readBufferLength - l);
-  readBufferCopy &= (1 << l) - 1;
+  readBufferCopy >>= (readBufferLength - lzw_length);
+  readBufferCopy &= (1 << lzw_length) - 1;
   *v = readBufferCopy;
-  readBufferLength -= l;
+  readBufferLength -= lzw_length;
   return true;
 }
 
@@ -315,9 +274,9 @@ bool lzw_valid_key(uint32_t k) {
   return lzw_data[k].data != NULL;
 }
 
-void lzw_decode() {
+void lzw_decode(void) {
   uint32_t currKey;
-  while (readbits(&currKey, lzw_length)) {
+  while (readbits(&currKey)) {
     DEBUG(2, "key %X of %u bits\n", currKey, lzw_length);
     assert(lzw_valid_key(currKey));
     // emit that string:
@@ -335,7 +294,7 @@ void lzw_decode() {
     }
 
     // peek at the next string:
-    bool valid = readbits(&currKey, lzw_length);
+    bool valid = readbits(&currKey);
     if (!valid) break;
     pushbits(currKey, lzw_length);
 
