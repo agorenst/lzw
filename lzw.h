@@ -1,15 +1,17 @@
-typedef struct lzw_stream_t lzw_stream_t, *lzw_stream_p;
+#include <stdint.h>
 
-// We encode the output as a sequence of bits, which can cause
-// complications if we need to say, emit, 13 bits.
-// We store things 8 bits at a time, to match fputc.
+void lzw_encode(void);
+void lzw_decode(void);
+void lzw_init(void);
+void lzw_destroy_state(void);
+
 typedef void (*lzw_emitter_t)(uint8_t);
 typedef uint32_t (*lzw_reader_t)(void);
 
-void lzw_encode(lzw_stream_p);
-void lzw_decode(lzw_stream_p);
-lzw_stream_p lzw_init(int, lzw_reader_t, lzw_emitter_t);
-void lzw_destroy_state(lzw_stream_p);
+extern lzw_emitter_t lzw_emitter;
+extern lzw_reader_t lzw_reader;
+extern uint32_t lzw_max_key;
+extern uint32_t lzw_length;
+extern uint32_t lzw_next_key;
 
 extern int lzw_debug_level;
-

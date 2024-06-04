@@ -12,30 +12,9 @@ char* optarg;
 
 bool doStats = false;
 
-// block size is 1,000,000
-int block_size = 1000000;
-
-int bytes_read = 0;
-uint32_t lzw_block_reader(void) {
-  if (bytes_read == block_size) {
-    return EOF;
-  }
-  bytes_read++;
-  return getchar();
-}
-
-int bytes_written = 0;
-void lzw_count_emitter(uint8_t b) {
-  bytes_written++;
-  fputc(b, stdout);
-}
-
-int bytes_decoded = 0;
-
 int main(int argc, char* argv[]) {
   bool doDecode = false;
   bool doEncode = false;
-  int lzw_max_key = 0;
   char c;
   while ((c = getopt(argc, argv, "deg:vsm:")) != -1) {
     switch (c) {
@@ -55,15 +34,15 @@ int main(int argc, char* argv[]) {
     printf("Error, max key too small (need >= 256, got %u)\n", lzw_max_key);
     return 2;
   }
-  lzw_stream_p s = lzw_init(lzw_max_key, NULL, NULL);
+  lzw_init();
   if (doEncode) {
-    lzw_encode(s);
+    lzw_encode();
   } else {
-    lzw_decode(s);
+    lzw_decode();
   }
-  //if (doStats) {
-  //  fprintf(stderr, "Stats: lzw_length = %u, lzw_next_key = %u\n", lzw_length, lzw_next_key);
-  //}
-  lzw_destroy_state(s);
+  if (doStats) {
+    fprintf(stderr, "Stats: lzw_length = %u, lzw_next_key = %u\n", lzw_length, lzw_next_key);
+  }
+  lzw_destroy_state();
   return 0;
 }
