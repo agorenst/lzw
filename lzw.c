@@ -136,14 +136,6 @@ void emit(uint32_t v, uint8_t l) {
   }
 }
 
-void debug_emit(uint32_t v, uint8_t l);
-void end(void) {
-  // we can do this as a single constant, but hold on.
-  while (bufferSize != 0) {
-    if (lzw_debug_level > 1) debug_emit(0, 1);
-    emit(0, 1);
-  }
-}
 
 int biggest_one(int v) {
   for (int i = 0; i < 64; ++i) {
@@ -201,35 +193,86 @@ void lzw_init() {
   //assert(lzw_length == 9);
 }
 
-void lzw_encode() {
-  int c = lzw_reader();
-  while (c != EOF) {
+size_t lzw_encode(size_t l) {
+  size_t i = 0;
+  for (; i < l; i++) {
+    int c = lzw_reader();
+    if (c == EOF) break;
     bool new_string = lzw_next_char(c);
     if (new_string) {
       emit(curr->key, lzw_length);
       curr = root;
       update_length();
-      // note that we don't update C here.
-    }
-    else {
-      c = lzw_reader();
+      lzw_next_char(c);
     }
   }
+  return i;
+}
+
+//size_t lzw_encode(size_t l) {
+//  static int c = 0;
+//  static bool new_string = false;
+//  if (l == 0) return 0;
+//
+//  size_t i = 0;
+//  if (new_string) {
+//    emit(curr->key, lzw_length);
+//    curr = root;
+//    update_length();
+//  } else {
+//    i++;
+//    c = lzw_reader();
+//  }
+//
+//  new_string = lzw_next_char(c);
+//  while (i < l && c != EOF) {
+//    if (new_string) {
+//      emit(curr->key, lzw_length);
+//      curr = root;
+//      update_length();
+//    } else {
+//      c = lzw_reader();
+//      i++;
+//    }
+//    new_string = lzw_next_char(c);
+//  }
+//  return i;
+//}
+
+
+
+
+
+
+
+
+
+void lzw_encode_end_stream(void) {
   if (curr != root) {
     emit(curr->key, lzw_length);
     curr = root;
   }
-  end();
+  // we can do this as a single constant, but hold on.
+  while (bufferSize != 0) {
+    if (lzw_debug_level > 1) debug_emit(0, 1);
+    emit(0, 1);
+  }
 }
 
 uint64_t readBuffer = 0;
 uint32_t readBufferLength = 0;
 const uint32_t MAX_BUFFER_LEN = sizeof(uint32_t)*8;
 
+// This will read the next bits up to our buffer.
 bool readbits(uint32_t* v, uint8_t l) {
   while (readBufferLength < l) {
     uint32_t c = lzw_reader();
-    if (c == EOF) {
+    if (c != EOF) {
+      readBuffer <<= 8;
+      readBufferLength += 8;
+      readBuffer |= (uint8_t) c;
+    }
+    else {
       if (readBufferLength != 0) {
         while (readBufferLength < l) {
           readBuffer <<= 1;
@@ -244,11 +287,6 @@ bool readbits(uint32_t* v, uint8_t l) {
         return *v != 0;
       }
       return false;
-    }
-    else {
-      readBuffer <<= 8;
-      readBufferLength += 8;
-      readBuffer |= (uint8_t) c;
     }
   }
   uint32_t readBufferCopy = readBuffer;
@@ -318,6 +356,7 @@ FILE* writefile;
 char* readbuffer;
 size_t readbuffer_index;
 size_t readbuffer_length;
+
 char* writebuffer;
 size_t writebuffer_index;
 size_t writebuffer_length;
@@ -332,5 +371,3 @@ void lzw_set_writebuffer(char* b, size_t l) {
   writebuffer_length = l;
   writebuffer_index = 0;
 }
-
-void lzw_writebuffer_func(uint8_t b);

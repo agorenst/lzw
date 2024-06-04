@@ -36,7 +36,8 @@ int main(int argc, char* argv[]) {
   }
   lzw_init();
   if (doEncode) {
-    lzw_encode();
+    while (lzw_encode(3));
+    lzw_encode_end_stream();
   } else {
     lzw_decode();
   }
