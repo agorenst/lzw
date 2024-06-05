@@ -274,14 +274,15 @@ bool lzw_valid_key(uint32_t k) {
   return lzw_data[k].data != NULL;
 }
 
+
 void lzw_decode(void) {
-  uint32_t currKey;
-  while (readbits(&currKey)) {
-    DEBUG(2, "key %X of %u bits\n", currKey, lzw_length);
-    assert(lzw_valid_key(currKey));
+  uint32_t curr_key;
+  while (readbits(&curr_key)) {
+    DEBUG(2, "key %X of %u bits\n", curr_key, lzw_length);
+    assert(lzw_valid_key(curr_key));
     // emit that string:
-    uint8_t* s = lzw_data[currKey].data;
-    uint32_t l = lzw_data[currKey].len;
+    uint8_t* s = lzw_data[curr_key].data;
+    uint32_t l = lzw_data[curr_key].len;
     assert(l);
     for (uint32_t i = 0; i < l; ++i) {
       lzw_emitter(s[i]);
@@ -294,39 +295,25 @@ void lzw_decode(void) {
     }
 
     // peek at the next string:
-    bool valid = readbits(&currKey);
+    bool valid = readbits(&curr_key);
     if (!valid) break;
-    pushbits(currKey, lzw_length);
+    pushbits(curr_key, lzw_length);
 
-    if (lzw_valid_key(currKey)) {
-      s = lzw_data[currKey].data;
+    // Find the next character.
+    // If the next key is valid, that means
+    // the next key is already something we've seen,
+    // otherwise it's going to be the key for the new
+    // string. Either way, we take the next step
+    // on that character, but then manually reset
+    // our curr node back to the root in prep for
+    // really reading the next string.
+    if (lzw_valid_key(curr_key)) {
+      s = lzw_data[curr_key].data;
+    } else {
+      assert(lzw_data[curr_key-1].data != NULL);
     }
-
     bool b = lzw_next_char(s[0]);
     assert(b);
     curr = root;
   }
-}
-
-// input/output options
-FILE* readfile;
-FILE* writefile;
-
-char* readbuffer;
-size_t readbuffer_index;
-size_t readbuffer_length;
-
-char* writebuffer;
-size_t writebuffer_index;
-size_t writebuffer_length;
-
-void lzw_set_readbuffer(char* b, size_t l) {
-  readbuffer = b;
-  readbuffer_length = l;
-  readbuffer_index = 0;
-}
-void lzw_set_writebuffer(char* b, size_t l) {
-  writebuffer = b;
-  writebuffer_length = l;
-  writebuffer_index = 0;
 }

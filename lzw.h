@@ -3,6 +3,7 @@
 size_t lzw_encode(size_t);
 void lzw_encode_end_stream(void);
 void lzw_decode(void);
+size_t lzw_decode_2(size_t);
 void lzw_init(void);
 void lzw_destroy_state(void);
 
