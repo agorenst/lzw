@@ -99,7 +99,6 @@ void lzw_destroy_state(void) {
 }
 
 
-void debug_emit(uint32_t v, uint8_t l);
 
 // We encode the output as a sequence of bits, which can cause
 // complications if we need to say, emit, 13 bits.
@@ -117,8 +116,63 @@ lzw_reader_t lzw_reader = lzw_default_reader;
 uint8_t buffer = 0;
 uint8_t bufferSize = 0;
 uint8_t MAX_BUFFER_SIZE = sizeof(uint8_t) * 8;
+
+char *as_binary(uint32_t x, uint32_t offset) {
+  static char s[33];
+  for (int i = 1; i < 33; i++) {
+    if (x&1) {
+      s[32 - i] = '1';
+    } else {
+      s[32 - i] = '0';
+    }
+    x >>= 1;
+  }
+  s[32] = '\0';
+  return s+(32-offset);
+}
+
+// Reading v from "left to right", we
+// emit the l bits of v.
 void emit(uint32_t v, uint8_t l) {
-  DEBUG(2, "key %X of %u bits\n", v, l);
+  //fprintf(stderr, "emit: %s, %u\n", as_binary(v, l), l);
+  //fprintf(stderr, "buffer: %s (%d)\n", as_binary(buffer, bufferSize), bufferSize);
+  for (;l;) {
+    // Do we have enough to get an emittable value?
+    size_t max_bits_to_enbuffer = MAX_BUFFER_SIZE - bufferSize;
+    assert(max_bits_to_enbuffer);
+
+    // bits_to_write = min(l, max_bits_to_enbuffer);
+    size_t bits_to_write = l;
+    if (bits_to_write > max_bits_to_enbuffer) {
+      bits_to_write = max_bits_to_enbuffer;
+    }
+
+    // Select the topmost of those bits:
+    size_t w = v >> (l - bits_to_write);
+
+    //assert(bits_to_write);
+    uint32_t mask = (1 << bits_to_write) - 1;
+    //assert(__builtin_popcount(mask) == bits_to_write);
+    buffer = (buffer << bits_to_write) | (w & mask);
+    bufferSize += bits_to_write;
+    //assert(bufferSize <= 8);
+    if (bufferSize == 8) {
+      //fprintf(stderr, "emitting: %s\n", as_binary(buffer, bufferSize));
+      lzw_emitter(buffer);
+      buffer = 0;
+      bufferSize = 0;
+    }
+
+    assert(bits_to_write <= l);
+    l -= bits_to_write;
+  }
+  //fprintf(stderr, "buffer: %s (%d)\n", as_binary(buffer, bufferSize), bufferSize);
+}
+
+void emit_old(uint32_t v, uint8_t l) {
+  // DEBUG(2, "key %X of %u bits\n", v, l);
+  fprintf(stderr, "emit: %s, %u\n", as_binary(v, l), l);
+  fprintf(stderr, "buffer: %s (%d)\n", as_binary(buffer, bufferSize), bufferSize);
   for (uint8_t i = 0; i < l; ++i) {
     assert(bufferSize < 8);
     buffer <<= 1;
@@ -129,11 +183,13 @@ void emit(uint32_t v, uint8_t l) {
     bufferSize++;
 
     if (bufferSize == 8) {
+      fprintf(stderr, "emitting: %s\n", as_binary(buffer, bufferSize));
       lzw_emitter(buffer);
       buffer = 0;
       bufferSize = 0;
     }
   }
+  fprintf(stderr, "buffer: %s (%d)\n", as_binary(buffer, bufferSize), bufferSize);
 }
 
 
@@ -162,12 +218,6 @@ void print_uint8_t_array(uint8_t* a, uint32_t l) {
   for (uint32_t i = 0; i < l; i++) {
     fprintf(stderr, "0x%X", a[i]);
   }
-}
-void debug_emit(uint32_t v, uint8_t l) {
-  print_uint32_t_bin(v);
-  fprintf(stderr, " %u ", l);
-  print_uint8_t_array(lzw_data[v].data, lzw_data[v].len);
-  fprintf(stderr, "\n");
 }
 
 
@@ -218,8 +268,7 @@ void lzw_encode_end_stream(void) {
   }
   // we can do this as a single constant, but hold on.
   while (bufferSize != 0) {
-    if (lzw_debug_level > 1) debug_emit(0, 1);
-    emit(0, 1);
+    emit(0, MAX_BUFFER_SIZE-bufferSize);
   }
 }
 
