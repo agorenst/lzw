@@ -274,6 +274,7 @@ bool lzw_valid_key(uint32_t k) {
   return lzw_data[k].data != NULL;
 }
 
+uint64_t lzw_bytes_emitted = 0;
 
 void lzw_decode(void) {
   uint32_t curr_key;
@@ -316,4 +317,37 @@ void lzw_decode(void) {
     assert(b);
     curr = root;
   }
+}
+
+uint8_t* lzw_emit_buffer = NULL;
+size_t lzw_emit_buffer_end = 0;
+size_t emit_buffer_max = 0;
+float emit_buffer_growth = 0.0;
+void lzw_emit_buffer_init(size_t initial, float factor) {
+  assert(factor > 1);
+  assert(initial > 1);
+  lzw_emit_buffer_end = initial;
+  emit_buffer_growth = factor;
+  lzw_emit_buffer = realloc(lzw_emit_buffer, emit_buffer_max);
+}
+void lzw_buffer_emitter(uint8_t b) {
+  if (emit_buffer_max <= lzw_emit_buffer_end) {
+    emit_buffer_max *= emit_buffer_growth;
+    lzw_emit_buffer = realloc(lzw_emit_buffer, emit_buffer_max);
+  }
+  lzw_emit_buffer[lzw_emit_buffer_end++] = b;
+}
+
+uint8_t* lzw_read_buffer = NULL;
+size_t lzw_read_buffer_end = 0;
+size_t lzw_read_buffer_index = 0;
+uint32_t lzw_buffer_reader(void) {
+  if (lzw_read_buffer_index == lzw_read_buffer_end) return EOF;
+  uint32_t r = lzw_read_buffer[lzw_read_buffer_index++];
+  return r;
+}
+void lzw_initialize_reader_buffer(char *buff, size_t len) {
+  lzw_read_buffer = (uint8_t*) buff;
+  lzw_read_buffer_end = len;
+  lzw_read_buffer_index = 0;
 }

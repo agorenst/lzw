@@ -12,6 +12,8 @@ char* optarg;
 
 bool doStats = false;
 
+size_t bytes_limit = 0;
+
 int main(int argc, char* argv[]) {
   bool doDecode = false;
   bool doEncode = false;
@@ -23,6 +25,7 @@ int main(int argc, char* argv[]) {
       case 'g': lzw_debug_level = atoi(optarg); break;
       case 's': doStats = true; break;
       case 'm': lzw_max_key = atoi(optarg); break;
+      case 'l': bytes_limit = atoi(optarg); break;
       default: break;
     }
   }
@@ -36,7 +39,7 @@ int main(int argc, char* argv[]) {
   }
   lzw_init();
   if (doEncode) {
-    while (lzw_encode(3));
+    while (lzw_encode(100000));
     lzw_encode_end_stream();
   } else {
     lzw_decode();
