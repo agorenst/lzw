@@ -31,7 +31,8 @@ uint32_t lzw_max_key = 0;
 // we want to express the different modes we can run in.
 // I.e., debug levels
 int lzw_debug_level = 0;
-#define DEBUG(l, ...) { if (lzw_debug_level >= l) fprintf(stderr, __VA_ARGS__); }
+//#define DEBUG(l, ...) { if (lzw_debug_level >= l) fprintf(stderr, __VA_ARGS__); }
+#define DEBUG(l, ...)
 
 // The primary action of this table is to ingest
 // the next byte, and maintain the correct encoding
@@ -222,11 +223,15 @@ void print_uint8_t_array(uint8_t* a, uint32_t l) {
 
 
 bool update_length() {
-  if (biggest_one(lzw_next_key) > lzw_length) {
+  if ((1 << lzw_length) == lzw_next_key) {
     lzw_len_update();
     return true;
   }
-  assert(lzw_length >= biggest_one(lzw_next_key));
+  //if (biggest_one(lzw_next_key) > lzw_length) {
+  //  lzw_len_update();
+  //  return true;
+  //}
+  //assert(lzw_length >= biggest_one(lzw_next_key));
   return false;
 }
 
