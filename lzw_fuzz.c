@@ -6,79 +6,41 @@
 #include <assert.h>
 #include "lzw.h"
 
-uint8_t* CompressedBuffer = NULL;
-size_t cbwriter = 0;
-size_t cbMAX = 0;
-size_t cbcounter = 0;
-void lzw_fuzzer_compress_emitter(uint8_t b) {
-  if (cbMAX <= cbwriter) {
-    cbMAX += 1024;
-    CompressedBuffer = realloc(CompressedBuffer, cbMAX);
-  }
-  //fprintf(stderr, "%s (%lu) %X\n", __FUNCTION__, ++cbcounter, b);
-  CompressedBuffer[cbwriter++] = b;
-}
-
-size_t fuzzerReader = 0;
-size_t FuzzerSize = 0;
-const uint8_t* FuzzerData = NULL;
-uint32_t lzw_fuzzer_compress_reader() {
-  if (fuzzerReader == FuzzerSize) return EOF;
-  uint32_t r = FuzzerData[fuzzerReader++];
-  //fprintf(stderr, "%s %X\n", __FUNCTION__, r);
-  return r;
-}
-
-size_t cbreader = 0;
-uint32_t lzw_fuzzer_decompress_reader() {
-  if (cbreader == cbwriter) return EOF;
-  uint32_t r = CompressedBuffer[cbreader++];
-  //fprintf(stderr, "%s %X\n", __FUNCTION__, r);
-  return r;
-}
-
-uint8_t* DecompressedBuffer = NULL;
-size_t dbwriter = 0;
-size_t dbMAX = 0;
-void lzw_fuzzer_decompress_emitter(uint8_t b) {
-  if (dbMAX <= dbwriter) {
-    dbMAX += 1024;
-    DecompressedBuffer = realloc(DecompressedBuffer, dbMAX);
-  }
-  //fprintf(stderr, "%s %X\n", __FUNCTION__, b);
-  DecompressedBuffer[dbwriter++] = b;
-}
-
 int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
-  FuzzerData = Data;
-  FuzzerSize = Size;
+  if (Size == 0) {
+  return 0;
+  }
 
-  lzw_emitter = lzw_fuzzer_compress_emitter;
-  lzw_reader = lzw_fuzzer_compress_reader;
+  lzw_input_file = fmemopen((uint8_t*)Data, Size, "r");
+  char* compressed_buffer = NULL;
+  size_t compressed_buffer_size = 0;
+  lzw_output_file = open_memstream(&compressed_buffer, &compressed_buffer_size);
   lzw_init();
-  while (lzw_encode(3));
-  lzw_encode_end_stream();
+  lzw_encode();
   lzw_destroy_state();
+  fclose(lzw_input_file);
+  fclose(lzw_output_file);
 
-  lzw_emitter = lzw_fuzzer_decompress_emitter;
-  lzw_reader = lzw_fuzzer_decompress_reader;
+  lzw_input_file = fmemopen(compressed_buffer, compressed_buffer_size, "r");
+  char* decompressed_buffer = NULL;
+  size_t decompressed_buffer_size = 0;
+  lzw_output_file = open_memstream(&decompressed_buffer, &decompressed_buffer_size);
   lzw_init();
   lzw_decode();
   lzw_destroy_state();
+  fclose(lzw_input_file);
+  fclose(lzw_output_file);
 
-  if (!DecompressedBuffer) {
+  if (decompressed_buffer_size == 0) {
     assert(Size == 0);
     return 0;
   }
 
-  //fprintf(stderr, "UncompressedCurrentSize = %lu, Size = %lu\n", dbwriter, Size);
-  assert(dbwriter == Size);
-  assert(!memcmp(Data, DecompressedBuffer, Size));
+  assert(decompressed_buffer_size == Size);
+  assert(!memcmp(Data, decompressed_buffer, Size));
 
-  cbwriter = 0;
-  cbreader = 0;
-  cbcounter = 0;
-  dbwriter = 0;
-  fuzzerReader = 0;
+  free(compressed_buffer);
+  free(decompressed_buffer);
+
   return 0;
 }
