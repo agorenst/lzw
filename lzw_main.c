@@ -35,9 +35,10 @@ int main(int argc, char* argv[]) {
   lzw_input_file = stdin;
   lzw_output_file = stdout;
   if (doEncode) {
-    lzw_encode();
+    while(lzw_encode(1));
+    lzw_encode_end();
   } else {
-    lzw_decode();
+    while(lzw_decode(1));
   }
   lzw_destroy_state();
   return 0;

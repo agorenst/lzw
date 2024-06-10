@@ -1,7 +1,8 @@
 #include <stdint.h>
 
-void lzw_encode(void);
-void lzw_decode(void);
+size_t lzw_encode(size_t);
+void lzw_encode_end(void);
+size_t lzw_decode(size_t);
 void lzw_init(void);
 void lzw_destroy_state(void);
 

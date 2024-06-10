@@ -13,6 +13,8 @@ lzw_fuzz: lzw.o
 lzw_fuzz_run: lzw_fuzz
 	./lzw_fuzz -max_len=1000000 FUZZ_CORPUS
 
+test2: lzw_main
+	cat lzw_failure.c | ./lzw_main -e -g 2 2> encode_log.txt | ./lzw_main -d -g 2 2> decode_log.txt | diff lzw_failure.c -
 test: lzw_main
 	cat lzw.c | ./lzw_main -e -g 2 2> encode_log.txt | ./lzw_main -d -g 2 2> decode_log.txt | diff lzw.c -
 

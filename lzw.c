@@ -29,8 +29,16 @@ uint32_t lzw_max_key = 0;
 FILE* lzw_input_file;
 FILE* lzw_output_file;
 
-uint64_t lzw_bytes_written;
-uint64_t lzw_bytes_read;
+uint64_t lzw_bytes_written = 0;
+uint64_t lzw_bytes_read = 0;
+
+const uint32_t BITREAD_BUFFER_MAX_SIZE = sizeof(uint32_t) * 8;
+uint8_t BITWRITE_BUFFER_MAX_SIZE = sizeof(uint8_t) * 8;
+uint64_t bitread_buffer = 0;
+uint32_t bitread_buffer_size = 0;
+uint8_t bitwrite_buffer = 0;
+uint8_t bitwrite_buffer_size = 0;
+
 
 // Before we get too much into executable code,
 // we want to express the different modes we can run in.
@@ -114,16 +122,12 @@ void lzw_destroy_state(void) {
       free(lzw_data[i].data);
   }
   free(lzw_data);
-  lzw_next_key = 1;
-  lzw_length = 1;
 }
+
 
 
 // Reading v from "left to right", we
 // emit the l bits of v.
-uint8_t bitwrite_buffer = 0;
-uint8_t bitwrite_buffer_size = 0;
-uint8_t BITWRITE_BUFFER_MAX_SIZE = sizeof(uint8_t) * 8;
 void emit(uint32_t v, uint8_t l) {
   for (; l;) {
     // Do we have enough to get an emittable value?
@@ -167,6 +171,8 @@ void lzw_init() {
   root = (lzw_node_p)calloc(1, sizeof(lzw_node_t));
   curr = root;
   root->key = -1;
+  lzw_length = 1;
+  lzw_next_key = 1;
   lzw_data = calloc(1 << lzw_length, sizeof(lzw_data_t));
   for (uint16_t i = 0; i < 256; ++i) {
     lzw_next_char(i);
@@ -174,10 +180,21 @@ void lzw_init() {
   }
   lzw_bytes_read = 0;
   lzw_bytes_written = 0;
+
+  bitread_buffer = 0;
+  bitread_buffer_size = 0;
+
+  bitwrite_buffer = 0;
+  bitwrite_buffer_size = 0;
+
+  lzw_bytes_read = 0;
+  lzw_bytes_written = 0;
 }
 
-void lzw_encode(void) {
-  for (;;) {
+
+size_t lzw_encode(size_t l) {
+  size_t i = 0;
+  for (;i < l;i++) {
     int c = fgetc(lzw_input_file);
     if (c == EOF)
       break;
@@ -192,6 +209,10 @@ void lzw_encode(void) {
       lzw_next_char(c);
     }
   }
+  return i;
+}
+
+void lzw_encode_end(void) {
   if (curr != root) {
     emit(curr->key, lzw_length);
     curr = root;
@@ -201,9 +222,6 @@ void lzw_encode(void) {
   }
 }
 
-uint64_t bitread_buffer = 0;
-uint32_t bitread_buffer_size = 0;
-const uint32_t BITREAD_BUFFER_MAX_SIZE = sizeof(uint32_t) * 8;
 
 // This will read the next bits up to our buffer.
 bool readbits(uint32_t *v) {
@@ -252,11 +270,12 @@ bool lzw_valid_key(uint32_t k) {
   return lzw_data[k].data != NULL;
 }
 
-uint64_t lzw_bytes_emitted = 0;
 
-void lzw_decode(void) {
+size_t lzw_decode(size_t limit) {
   uint32_t curr_key;
-  while (readbits(&curr_key)) {
+  size_t read = 0;
+  while (read < limit && readbits(&curr_key)) {
+    read += lzw_length;
     DEBUG(2, "key %X of %u bits\n", curr_key, lzw_length);
     ASSERT(lzw_valid_key(curr_key));
     // emit that string:
@@ -299,4 +318,5 @@ void lzw_decode(void) {
     ASSERT(b);
     curr = root;
   }
+  return read;
 }
