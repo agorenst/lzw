@@ -1,4 +1,6 @@
 #include <stdint.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 size_t lzw_encode(size_t);
 void lzw_encode_end(void);

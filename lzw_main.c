@@ -7,7 +7,7 @@
 #include <unistd.h>
 #include "lzw.h"
 
-char getopt(int, char*[], const char*);
+int getopt(int, char*const[], const char*);
 char* optarg;
 
 int main(int argc, char* argv[]) {
