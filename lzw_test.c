@@ -91,26 +91,6 @@ int main(int argc, char *argv[]) {
   }
   printf("\n");
 
-  //char *outbuffer = NULL;
-  //size_t outsize;
-  //encode_stream(input, strlen(input), &outbuffer, &outsize);
-
-  //printf("encoded:");
-  //for (int i = 0; i < outsize; i++) {
-  //  printf("%#2x ", outbuffer[i]);
-  //}
-  //printf("\n");
-
-  //char *decodebuffer = NULL;
-  //size_t decodesize;
-  //decode_stream(outbuffer, outsize, &decodebuffer, &decodesize);
-
-  //printf("decoded (%zu):", decodesize);
-  //for (int i = 0; i < decodesize; i++) {
-  //  printf("%#2x ", decodebuffer[i]);
-  //}
-  //printf("\n");
-
   char* encodechunks = NULL;
   size_t encodechunks_size;
   encode_as_chunks(input, strlen(input), &encodechunks, &encodechunks_size);

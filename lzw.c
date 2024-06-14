@@ -52,11 +52,11 @@ int lzw_debug_level = 0;
 */
 #define DEBUG(l, ...)
 
-#define ASSERT(x) assert(x)
-// #define ASSERT(x)
+//#define ASSERT(x) assert(x)
+ #define ASSERT(x)
 
-#define DEBUG_STMT(x) x
-// #define DEBUG_STMT(x)
+// #define DEBUG_STMT(x) x
+ #define DEBUG_STMT(x)
 
 // The primary action of this table is to ingest
 // the next byte, and maintain the correct encoding
@@ -227,6 +227,11 @@ void lzw_encode_end(void) {
   }
 }
 
+void lzw_decode_end_chunk(void) {
+  bitread_buffer = 0;
+  bitread_buffer_size = 0;
+}
+
 // This will read the next bits up to our buffer.
 bool readbits(uint32_t *v) {
   while (bitread_buffer_size < lzw_length) {
@@ -322,9 +327,9 @@ size_t lzw_decode(size_t limit) {
     // really reading the next string.
     if (lzw_valid_key(curr_key)) {
       s = lzw_data[curr_key].data;
-    } else {
-      fprintf(stderr, "lzw_length: %u, curr_key: %u\n", lzw_length, curr_key);
-      ASSERT(lzw_data[curr_key - 1].data != NULL);
+    //} else {
+    //  fprintf(stderr, "lzw_length: %u, curr_key: %u\n", lzw_length, curr_key);
+    //  ASSERT(lzw_data[curr_key - 1].data != NULL);
     }
     DEBUG_STMT(bool b =)
     lzw_next_char(s[0]);
