@@ -10,17 +10,34 @@
 int getopt(int, char *const[], const char *);
 char *optarg;
 
+void ratio_tracker() {
+  static uint64_t prev_bytes_written = 0;
+  static uint64_t prev_bytes_read = 0;
+  uint64_t bytes_written = lzw_bytes_written - prev_bytes_written;
+  uint64_t bytes_read = lzw_bytes_read - prev_bytes_read;
+  prev_bytes_written = lzw_bytes_written;
+  prev_bytes_read = lzw_bytes_read;
+  double compression_ratio = (double)bytes_written / (double)bytes_read;
+  fprintf(stderr, "compression_ratio: %f\tbytes_read: %zu\n", compression_ratio, lzw_bytes_read);
+}
+
 int main(int argc, char *argv[]) {
-  bool doDecode = false;
-  bool doEncode = false;
+  bool do_decode = false;
+  bool do_encode = false;
+  bool trace_ratio = false;
+
+  size_t page_size = 0;
+  //size_t reset_limit = 0;
+  size_t decompressed_byte_limit = 0;
+
   char c;
-  while ((c = getopt(argc, argv, "deg:m:")) != -1) {
+  while ((c = getopt(argc, argv, "deg:m:p:r:ql:")) != -1) {
     switch (c) {
     case 'd':
-      doDecode = true;
+      do_decode = true;
       break;
     case 'e':
-      doEncode = true;
+      do_encode = true;
       break;
     case 'g':
       lzw_debug_level = atoi(optarg);
@@ -28,11 +45,23 @@ int main(int argc, char *argv[]) {
     case 'm':
       lzw_max_key = atoi(optarg);
       break;
+    case 'p':
+      page_size = atoi(optarg);
+      break;
+    case 'r':
+      //reset_limit = atoi(optarg);
+      break;
+    case 'q':
+      trace_ratio = true;
+      break;
+    case 'l':
+      decompressed_byte_limit = atoi(optarg);
+      break;
     default:
       break;
     }
   }
-  if (doEncode == doDecode) {
+  if (do_encode == do_decode) {
     printf("Error, must uniquely choose encode or decode\n");
     return 1;
   }
@@ -43,24 +72,27 @@ int main(int argc, char *argv[]) {
   lzw_init();
   lzw_input_file = stdin;
   lzw_output_file = stdout;
-  uint64_t prev_bytes_written = 0;
-  uint64_t prev_bytes_read = 0;
 
-  const int page_size = 1024;
+  if (page_size == 0) {
+    page_size = 1024;
+  }
 
-  if (doEncode) {
+  if (do_encode) {
     while (lzw_encode(page_size)) {
-      uint64_t bytes_written = lzw_bytes_written - prev_bytes_written;
-      uint64_t bytes_read = lzw_bytes_read - prev_bytes_read;
-      prev_bytes_written = lzw_bytes_written;
-      prev_bytes_read = lzw_bytes_read;
-      double compression_ratio = (double)bytes_written/(double)bytes_read;
-      fprintf(stderr, "compression_ratio:\t%f\n", compression_ratio);
+      if (trace_ratio) {
+        ratio_tracker();
+      }
+      if (decompressed_byte_limit && lzw_bytes_read >= decompressed_byte_limit) {
+        break;
+      }
     }
     lzw_encode_end();
   } else {
-    while (lzw_decode(page_size))
-      ;
+    while (lzw_decode(page_size)) {
+      if (trace_ratio) {
+        ratio_tracker();
+      }
+    }
   }
   lzw_destroy_state();
   return 0;

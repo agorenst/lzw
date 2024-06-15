@@ -226,11 +226,6 @@ void lzw_encode_end(void) {
   }
 }
 
-void lzw_decode_end_chunk(void) {
-  bitread_buffer = 0;
-  bitread_buffer_size = 0;
-}
-
 // This will read the next bits up to our buffer.
 bool readbits(uint32_t *v) {
   while (bitread_buffer_size < lzw_length) {
