@@ -1,6 +1,6 @@
 CC=clang
 # CFLAGS=-Wall -Werror -g -fsanitize=address,undefined -std=c99 -pedantic
-CFLAGS=-Wall -Werror -g -fsanitize=address,undefined
+CFLAGS=-Wall -Werror -g -fsanitize=address,undefined -flto -O3
 #CFLAGS=-Wall -Werror -g -std=c99 -pedantic -O2
 #CFLAGS=-Wall -Werror -g -std=c99 -pedantic -O3 -flto -fsanitize=address,undefined
 
@@ -10,7 +10,7 @@ lzw_run_test: lzw_test
 lzw_test: lzw.o
 lzw_main: lzw.o
 
-lzw_fuzz: CFLAGS=-Wall -Werror -g -fsanitize=address,undefined,fuzzer -O2
+lzw_fuzz: CFLAGS=-Wall -Werror -g -fsanitize=address,undefined,fuzzer -O3 -flto
 lzw_fuzz: lzw.o
 
 # 4212811795

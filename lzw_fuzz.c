@@ -46,7 +46,7 @@ size_t bounded_op(FILE* in, FILE* out, size_t chunk, encode_mode_t m) {
 
 void decode_as_chunks(char *inbuffer, size_t insize, size_t target_size,
                       char **outbuffer, size_t *outsize) {
-  fprintf(stderr, "Decoding: %zu total bytes\n", insize);
+  // fprintf(stderr, "Decoding: %zu total bytes\n", insize);
   size_t chunksize = 3;
   FILE *out = open_memstream(outbuffer, outsize);
   FILE *in = fmemopen(inbuffer, insize, "r");

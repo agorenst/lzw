@@ -123,7 +123,6 @@ void lzw_destroy_state(void) {
   }
   free(lzw_data);
   if (bitread_buffer != 0 && last_read != EOF) {
-    fprintf(stderr, "ungetting!\n");
     ungetc(last_read, lzw_input_file);
   }
   last_read = EOF;
@@ -236,7 +235,6 @@ void lzw_decode_end_chunk(void) {
 bool readbits(uint32_t *v) {
   while (bitread_buffer_size < lzw_length) {
     uint32_t c = fgetc(lzw_input_file);
-    fprintf(stderr, "read char: %u, EOF %d?\n", c, c == EOF);
     last_read = c;
     if (c != EOF) {
       lzw_bytes_read++;
@@ -253,7 +251,6 @@ bool readbits(uint32_t *v) {
         bitread_buffer_size = 0;
         return *v != 0;
       }
-      fprintf(stderr, "%s: false-out\n", __FUNCTION__);
       return false;
     }
   }
@@ -262,7 +259,6 @@ bool readbits(uint32_t *v) {
   bitread_buffer_copy &= (1 << lzw_length) - 1;
   *v = bitread_buffer_copy;
   bitread_buffer_size -= lzw_length;
-  fprintf(stderr, "%s: true-out, key: %u, %lu\n", __FUNCTION__, *v, bitread_buffer);
   return true;
 }
 
@@ -286,18 +282,14 @@ bool lzw_valid_key(uint32_t k) {
 size_t lzw_decode(size_t limit) {
   uint32_t curr_key;
   size_t read = 0;
-  //fprintf(stderr, "entering decode %zu, %d\n", limit, read < limit);
   while (read < limit && readbits(&curr_key)) {
-    //read += lzw_length;
     DEBUG(2, "key %X of %u bits\n", curr_key, lzw_length);
-    fprintf(stderr, "key %X of %u bits\n", curr_key, lzw_length);
     ASSERT(lzw_valid_key(curr_key));
     // emit that string:
     uint8_t *s = lzw_data[curr_key].data;
     uint32_t l = lzw_data[curr_key].len;
     ASSERT(l);
     for (uint32_t i = 0; i < l; ++i) {
-      fprintf(stderr, "\t%#2x\n", s[i]);
       fputc(s[i], lzw_output_file);
       lzw_bytes_written++;
       DEBUG_STMT(bool b =)
@@ -305,7 +297,6 @@ size_t lzw_decode(size_t limit) {
       ASSERT(!b);
     }
     read += l;
-    fprintf(stderr, "reading: %u\n", l);
 
     if (key_requires_bigger_length(lzw_next_key + 1)) {
       lzw_len_update();

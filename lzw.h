@@ -16,3 +16,4 @@ extern uint64_t lzw_bytes_written;
 extern uint64_t lzw_bytes_read;
 
 extern int lzw_debug_level;
+extern uint32_t lzw_length;
