@@ -22,8 +22,8 @@ lzw_data_t *lzw_data = NULL;
 lzw_node_p root = NULL;
 lzw_node_p curr = NULL;
 
-uint32_t lzw_length = 1;
-uint32_t lzw_next_key = 1;
+uint32_t lzw_length = 0;
+uint32_t lzw_next_key = 0;
 uint32_t lzw_max_key = 0;
 
 FILE *lzw_input_file;
@@ -104,10 +104,9 @@ void lzw_len_update() {
 
 // We also want to destroy our tree, ultimately
 void lzw_destroy_tree(lzw_node_p t) {
+  if (!t) return ;
   for (uint16_t i = 0; i < 256; ++i) {
-    if (t->children[i]) {
-      lzw_destroy_tree(t->children[i]);
-    }
+    lzw_destroy_tree(t->children[i]);
   }
   free(t);
 }
@@ -121,9 +120,14 @@ void lzw_destroy_state(void) {
     if (lzw_data[i].data)
       free(lzw_data[i].data);
   }
-  free(lzw_data);
-  if (bitread_buffer != 0 && last_read != EOF) {
+  if (lzw_data) {
+    free(lzw_data);
+    lzw_data = NULL;
+  }
+  lzw_next_key = 0;
+  if (last_read != EOF) {
     ungetc(last_read, lzw_input_file);
+    lzw_bytes_read--;
   }
   last_read = EOF;
   //if (last_read != EOF) ungetc(last_read, lzw_input_file);
