@@ -44,26 +44,27 @@ const uint8_t BITWRITE_BUFFER_MAX_SIZE = sizeof(bitwrite_buffer) * 8;
 // I.e., debug levels
 int lzw_debug_level = 0;
 
+#ifdef NDEBUG
+#define DEBUG(l, ...)
+#define ASSERT(x)
+#define DEBUG_STMT(x)
+#else
 #define DEBUG(l, ...)                                                          \
   {                                                                            \
     if (lzw_debug_level >= l)                                                  \
       fprintf(stderr, __VA_ARGS__);                                            \
   }
+#define ASSERT(x) assert(x)
+#define DEBUG_STMT(x) x
+#endif
 
-// #define DEBUG(l, ...)
 
-//#define ASSERT(x) assert(x)
- #define ASSERT(x)
-
-// #define DEBUG_STMT(x) x
- #define DEBUG_STMT(x)
 
 // The primary action of this table is to ingest
 // the next byte, and maintain the correct encoding
 // information for the implicit string seen-so-far.
 // That's captured in this function:
 bool lzw_next_char(uint8_t c) {
-  DEBUG(3, "nextchar: 0x%X\n", c);
   if (curr->children[c]) {
     DEBUG(2, "key %u -> key %u\n", curr->key, curr->children[c]->key);
     curr = curr->children[c];
@@ -127,6 +128,7 @@ void lzw_destroy_state(void) {
   }
   lzw_next_key = 0;
   if (!feof(lzw_input_file) && bitread_buffer_size >= 8) {
+    DEBUG(3, "lzw_destroy_state: pushing back\n");
     // Extract the topmost 8 bits and put them back.
     uint32_t last_read = bitread_buffer_pop_bits(8);
     assert(last_read < 256);
@@ -139,6 +141,7 @@ void lzw_destroy_state(void) {
 // emit the l bits of v.
 void emit(uint32_t v, uint8_t l) {
   for (; l;) {
+    DEBUG(3, "emit, inloop: l=%d, bitwriter_buffer_size=%d\n", l, bitwrite_buffer_size);
     // Do we have enough to get an emittable value?
     size_t max_bits_to_enbuffer =
         BITWRITE_BUFFER_MAX_SIZE - bitwrite_buffer_size;
@@ -157,6 +160,7 @@ void emit(uint32_t v, uint8_t l) {
     bitwrite_buffer = (bitwrite_buffer << bits_to_write) | (w & mask);
     bitwrite_buffer_size += bits_to_write;
     if (bitwrite_buffer_size == 8) {
+      DEBUG(3, "emit:fputc(%#x)\n", bitwrite_buffer);
       fputc(bitwrite_buffer, lzw_output_file);
       lzw_bytes_written++;
       bitwrite_buffer = 0;
@@ -205,6 +209,7 @@ size_t lzw_encode(size_t l) {
   size_t i = 0;
   for (; i < l; i++) {
     int c = fgetc(lzw_input_file);
+    DEBUG(3, "lzw_encode:fgetc(lzw_input_file)=%#x\n", c);
     if (c == EOF)
       break;
     lzw_bytes_read++;
@@ -222,6 +227,8 @@ size_t lzw_encode(size_t l) {
 }
 
 void lzw_encode_end(void) {
+  DEBUG(3, "lzw_encode_end: curr!=root=%s, bitwrite_buffer_size!=0=%s\n",
+curr != root ? "true": "false", bitwrite_buffer_size != 0 ? "true" : "false");
   if (curr != root) {
     emit(curr->key, lzw_length);
     curr = root;

@@ -11,7 +11,7 @@ lzw_run_test: lzw_test
 
 lzw_test: lzw.o
 
-lzw_fuzz: CFLAGS=-Wall -Werror -g -fsanitize=address,undefined,fuzzer -O3 -flto
+lzw_fuzz: CFLAGS=-Wall -Werror -g -fsanitize=address,undefined,fuzzer -O3 -flto -DNDEBUG
 lzw_fuzz: lzw.o
 
 # 4212811795

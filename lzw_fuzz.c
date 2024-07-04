@@ -36,7 +36,7 @@ size_t bounded_op(FILE* in, FILE* out, size_t chunk, encode_mode_t m) {
     size_t res = 0;
     if (m == MODE_ENCODE) {
         res = lzw_encode(chunk);
-        lzw_encode_end();
+        //lzw_encode_end();
     } else if (m == MODE_DECODE) {
         res = lzw_decode(chunk);
     }
@@ -46,54 +46,79 @@ size_t bounded_op(FILE* in, FILE* out, size_t chunk, encode_mode_t m) {
 
 void decode_as_chunks(char *inbuffer, size_t insize, size_t target_size,
                       char **outbuffer, size_t *outsize) {
-    lzw_init();
-  size_t chunksize = 1;
+  // fprintf(stderr, "Decoding: %zu total bytes\n", insize);
+  size_t chunksize = 3;
   FILE *out = open_memstream(outbuffer, outsize);
   FILE *in = fmemopen(inbuffer, insize, "r");
   while (target_size > 0) {
     target_size -= bounded_op(in, out, chunksize, MODE_DECODE);
   }
-    lzw_destroy_state();
   fclose(in);
   fclose(out);
 }
 void encode_as_chunks(char *inbuffer, size_t insize, char **outbuffer,
                       size_t *outsize) {
-    lzw_init();
-
-  size_t chunksize = 1;
+  size_t chunksize = 3;
   FILE *out = open_memstream(outbuffer, outsize);
   FILE *in = fmemopen(inbuffer, insize, "r");
   while (insize > 0) {
     insize -= bounded_op(in, out, chunksize, MODE_ENCODE);
   }
-    lzw_destroy_state();
   fclose(in);
   fclose(out);
 }
 
+void init_streams(char *inbuffer, size_t insize, char **outbuffer,
+                  size_t *outsize) {
+  FILE *out = open_memstream(outbuffer, outsize);
+  FILE *in = fmemopen(inbuffer, insize, "r");
+  lzw_input_file = in;
+  lzw_output_file = out;
+}
+void close_streams(void) {
+  fclose(lzw_input_file);
+  fclose(lzw_output_file);
+}
 
 int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
   if (Size == 0) {
     return 0;
   }
+  //lzw_debug_level = 3;
 
-  //uint8_t chunkSize = Data[Size-1];
-  //Size--;
+  //fprintf(stderr, "input:\n");
+  //print_byte_array((const char*)Data, Size);
 
-  char* encodechunks = NULL;
-  size_t encodechunks_size;
-  encode_as_chunks((char*)Data, Size, &encodechunks, &encodechunks_size);
+  // uint8_t chunkSize = Data[Size-1];
+  // Size--;
 
-  char* decodechunks = NULL;
+  char *encodechunks = NULL;
+  size_t encodechunks_size = 0;
+  lzw_init();
+  init_streams((char*)Data, Size, &encodechunks, &encodechunks_size);
+  while (!feof(lzw_input_file)) {
+    lzw_encode(1024);
+  }
+  lzw_encode_end();
+  lzw_destroy_state();
+  close_streams();
+  //fprintf(stderr, "encode size: %zu\n", encodechunks_size);
+
+  char *decodechunks = NULL;
   size_t decodechunks_size;
-  decode_as_chunks(encodechunks, encodechunks_size, Size, &decodechunks, &decodechunks_size);
+  lzw_init();
+  init_streams(encodechunks, encodechunks_size, &decodechunks,
+               &decodechunks_size);
+  while (!feof(lzw_input_file)) {
+    lzw_decode(1024);
+  }
+  lzw_destroy_state();
+  close_streams();
 
   assert(Size == decodechunks_size);
   assert(!memcmp(decodechunks, Data, Size));
 
-
   free(encodechunks);
   free(decodechunks);
-return 0;
+  return 0;
 }
