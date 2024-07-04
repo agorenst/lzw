@@ -34,8 +34,8 @@ uint64_t lzw_bytes_read = 0;
 
 // There's an implicit invariant that our lzw_length can never be more than 32,
 // and this means our buffers always need at least 2 uses before overflowing.
-// Some of our iteration depends on that (in particular emit, which unconditionally
-// enbuffers something before trying to drain it).
+// Some of our iteration depends on that (in particular emit, which
+// unconditionally enbuffers something before trying to drain it).
 uint64_t bitread_buffer = 0;
 uint32_t bitread_buffer_size = 0;
 const uint32_t BITREAD_BUFFER_MAX_SIZE = sizeof(bitread_buffer) * 8;
@@ -61,8 +61,6 @@ int lzw_debug_level = 0;
 #define ASSERT(x) assert(x)
 #define DEBUG_STMT(x) x
 #endif
-
-
 
 // The primary action of this table is to ingest
 // the next byte, and maintain the correct encoding
@@ -109,7 +107,8 @@ void lzw_len_update() {
 
 // We also want to destroy our tree, ultimately
 void lzw_destroy_tree(lzw_node_p t) {
-  if (!t) return ;
+  if (!t)
+    return;
   for (uint16_t i = 0; i < 256; ++i) {
     lzw_destroy_tree(t->children[i]);
   }
@@ -131,6 +130,7 @@ void lzw_destroy_state(void) {
     lzw_data = NULL;
   }
   lzw_next_key = 0;
+  assert((bitread_buffer & ((1 << bitread_buffer_size)-1)) == 0);
   if (!feof(lzw_input_file) && bitread_buffer_size >= 8) {
     assert(false);
     DEBUG(3, "lzw_destroy_state: pushing back\n");
@@ -159,7 +159,8 @@ uint8_t bitwrite_buffer_pop_byte(void) {
 // Reading v from "left to right", we
 // emit the l bits of v.
 void emit(uint32_t v, uint8_t l) {
-  DEBUG(3, "emit, inloop: l=%d, bitwriter_buffer_size=%d\n", l, bitwrite_buffer_size);
+  DEBUG(3, "emit, inloop: l=%d, bitwriter_buffer_size=%d\n", l,
+        bitwrite_buffer_size);
   bitwrite_buffer_push_bits(v, l);
   while (bitwrite_buffer_size >= 8) {
     char c = bitwrite_buffer_pop_byte();
@@ -224,7 +225,8 @@ size_t lzw_encode(size_t l) {
 
 void lzw_encode_end(void) {
   DEBUG(3, "lzw_encode_end: curr!=root=%s, bitwrite_buffer_size!=0=%s\n",
-curr != root ? "true": "false", bitwrite_buffer_size != 0 ? "true" : "false");
+        curr != root ? "true" : "false",
+        bitwrite_buffer_size != 0 ? "true" : "false");
   if (curr != root) {
     emit(curr->key, lzw_length);
     curr = root;
@@ -316,7 +318,8 @@ size_t lzw_decode(size_t limit) {
     if (lzw_valid_key(curr_key)) {
       s = lzw_data[curr_key].data;
     } else {
-    //  fprintf(stderr, "lzw_length: %u, curr_key: %u\n", lzw_length, curr_key);
+      //  fprintf(stderr, "lzw_length: %u, curr_key: %u\n", lzw_length,
+      //  curr_key);
       ASSERT(lzw_data[curr_key - 1].data != NULL);
     }
     DEBUG_STMT(bool b =)
