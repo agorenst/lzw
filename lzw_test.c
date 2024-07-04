@@ -23,7 +23,7 @@ size_t bounded_op(FILE* in, FILE* out, size_t chunk, encode_mode_t m) {
     return res;
 }
 
-const size_t chunksize = 1;
+const size_t chunksize = 3;
 void decode_as_chunks(char *inbuffer, size_t insize, size_t target_size,
                       char **outbuffer, size_t *outsize) {
   fprintf(stderr, "Decoding: %zu total bytes\n", insize);
@@ -83,7 +83,7 @@ void decode_stream(char *inbuffer, size_t insize, char **outbuffer,
 }
 
 int main(int argc, char *argv[]) {
-  char input[] = "--";
+  char input[] = "hello";
 
   printf("input:");
   for (int i = 0; i < strlen(input); i++) {

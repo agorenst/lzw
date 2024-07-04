@@ -32,25 +32,25 @@ FILE *lzw_output_file;
 uint64_t lzw_bytes_written = 0;
 uint64_t lzw_bytes_read = 0;
 
-const uint32_t BITREAD_BUFFER_MAX_SIZE = sizeof(uint32_t) * 8;
-uint8_t BITWRITE_BUFFER_MAX_SIZE = sizeof(uint8_t) * 8;
 uint64_t bitread_buffer = 0;
 uint32_t bitread_buffer_size = 0;
+const uint32_t BITREAD_BUFFER_MAX_SIZE = sizeof(bitread_buffer) * 8;
 uint8_t bitwrite_buffer = 0;
 uint8_t bitwrite_buffer_size = 0;
+const uint8_t BITWRITE_BUFFER_MAX_SIZE = sizeof(bitwrite_buffer) * 8;
 
 // Before we get too much into executable code,
 // we want to express the different modes we can run in.
 // I.e., debug levels
 int lzw_debug_level = 0;
-/*
+
 #define DEBUG(l, ...)                                                          \
   {                                                                            \
     if (lzw_debug_level >= l)                                                  \
       fprintf(stderr, __VA_ARGS__);                                            \
   }
-*/
-#define DEBUG(l, ...)
+
+// #define DEBUG(l, ...)
 
 //#define ASSERT(x) assert(x)
  #define ASSERT(x)
@@ -111,7 +111,8 @@ void lzw_destroy_tree(lzw_node_p t) {
   free(t);
 }
 
-int32_t last_read = EOF;
+uint32_t bitread_buffer_pop_bits(uint32_t bitcount);
+
 void lzw_destroy_state(void) {
   lzw_destroy_tree(root);
   curr = NULL;
@@ -125,12 +126,13 @@ void lzw_destroy_state(void) {
     lzw_data = NULL;
   }
   lzw_next_key = 0;
-  if (last_read != EOF) {
-    ungetc(last_read, lzw_input_file);
+  if (!feof(lzw_input_file) && bitread_buffer_size >= 8) {
+    // Extract the topmost 8 bits and put them back.
+    uint32_t last_read = bitread_buffer_pop_bits(8);
+    assert(last_read < 256);
+    ungetc((char)last_read, lzw_input_file);
     lzw_bytes_read--;
   }
-  last_read = EOF;
-  //if (last_read != EOF) ungetc(last_read, lzw_input_file);
 }
 
 // Reading v from "left to right", we
@@ -176,7 +178,6 @@ bool update_length() {
 }
 
 void lzw_init() {
-  last_read = EOF;
   root = (lzw_node_p)calloc(1, sizeof(lzw_node_t));
   curr = root;
   root->key = -1;
@@ -230,11 +231,27 @@ void lzw_encode_end(void) {
   }
 }
 
+void bitread_buffer_push_byte(uint8_t c) {
+  assert(bitread_buffer_size + 8 < BITREAD_BUFFER_MAX_SIZE);
+  bitread_buffer <<= 8;
+  bitread_buffer |= c;
+  bitread_buffer_size += 8;
+}
+uint32_t bitread_buffer_pop_bits(uint32_t bitcount) {
+  assert(bitcount < 32);
+  assert(bitread_buffer_size >= bitcount);
+  uint64_t bitread_buffer_copy = bitread_buffer;
+  // slide down the "oldest" bits
+  bitread_buffer_copy >>= (bitread_buffer_size - bitcount);
+  bitread_buffer_copy &= (1 << bitcount) - 1;
+  bitread_buffer_size -= bitcount;
+  return bitread_buffer_copy;
+}
+
 // This will read the next bits up to our buffer.
 bool readbits(uint32_t *v) {
   while (bitread_buffer_size < lzw_length) {
     uint32_t c = fgetc(lzw_input_file);
-    last_read = c;
     if (c != EOF) {
       lzw_bytes_read++;
       bitread_buffer <<= 8;
@@ -253,7 +270,7 @@ bool readbits(uint32_t *v) {
       return false;
     }
   }
-  uint32_t bitread_buffer_copy = bitread_buffer;
+  uint64_t bitread_buffer_copy = bitread_buffer;
   bitread_buffer_copy >>= (bitread_buffer_size - lzw_length);
   bitread_buffer_copy &= (1 << lzw_length) - 1;
   *v = bitread_buffer_copy;

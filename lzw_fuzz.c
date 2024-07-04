@@ -30,7 +30,7 @@ typedef enum {
 } encode_mode_t;
 
 size_t bounded_op(FILE* in, FILE* out, size_t chunk, encode_mode_t m) {
-    lzw_init();
+    //lzw_init();
     lzw_input_file = in;
     lzw_output_file = out;
     size_t res = 0;
@@ -40,30 +40,34 @@ size_t bounded_op(FILE* in, FILE* out, size_t chunk, encode_mode_t m) {
     } else if (m == MODE_DECODE) {
         res = lzw_decode(chunk);
     }
-    lzw_destroy_state();
+    //lzw_destroy_state();
     return res;
 }
 
 void decode_as_chunks(char *inbuffer, size_t insize, size_t target_size,
                       char **outbuffer, size_t *outsize) {
-  // fprintf(stderr, "Decoding: %zu total bytes\n", insize);
-  size_t chunksize = 3;
+    lzw_init();
+  size_t chunksize = 1;
   FILE *out = open_memstream(outbuffer, outsize);
   FILE *in = fmemopen(inbuffer, insize, "r");
   while (target_size > 0) {
     target_size -= bounded_op(in, out, chunksize, MODE_DECODE);
   }
+    lzw_destroy_state();
   fclose(in);
   fclose(out);
 }
 void encode_as_chunks(char *inbuffer, size_t insize, char **outbuffer,
                       size_t *outsize) {
-  size_t chunksize = 3;
+    lzw_init();
+
+  size_t chunksize = 1;
   FILE *out = open_memstream(outbuffer, outsize);
   FILE *in = fmemopen(inbuffer, insize, "r");
   while (insize > 0) {
     insize -= bounded_op(in, out, chunksize, MODE_ENCODE);
   }
+    lzw_destroy_state();
   fclose(in);
   fclose(out);
 }
