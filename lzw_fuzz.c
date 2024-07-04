@@ -86,6 +86,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
   }
   //lzw_debug_level = 3;
 
+  //fprintf(stderr, "input: %zu\n", Size);
   //fprintf(stderr, "input:\n");
   //print_byte_array((const char*)Data, Size);
 

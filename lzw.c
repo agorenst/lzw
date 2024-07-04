@@ -35,9 +35,9 @@ uint64_t lzw_bytes_read = 0;
 uint64_t bitread_buffer = 0;
 uint32_t bitread_buffer_size = 0;
 const uint32_t BITREAD_BUFFER_MAX_SIZE = sizeof(bitread_buffer) * 8;
-uint8_t bitwrite_buffer = 0;
-uint8_t bitwrite_buffer_size = 0;
-const uint8_t BITWRITE_BUFFER_MAX_SIZE = sizeof(bitwrite_buffer) * 8;
+uint64_t bitwrite_buffer = 0;
+uint32_t bitwrite_buffer_size = 0;
+const uint32_t BITWRITE_BUFFER_MAX_SIZE = sizeof(bitwrite_buffer) * 8;
 
 // Before we get too much into executable code,
 // we want to express the different modes we can run in.
@@ -137,38 +137,29 @@ void lzw_destroy_state(void) {
   }
 }
 
+void bitwrite_buffer_push_bits(uint32_t v, uint8_t l) {
+  ASSERT(bitwrite_buffer_size + l < BITWRITE_BUFFER_MAX_SIZE);
+  uint32_t mask = (1 << l) - 1;
+  bitwrite_buffer = (bitwrite_buffer << l) | (v & mask);
+  bitwrite_buffer_size += l;
+}
+
+uint8_t bitwrite_buffer_pop_byte(void) {
+  ASSERT(bitwrite_buffer_size >= 8);
+  bitwrite_buffer_size -= 8;
+  uint8_t b = bitwrite_buffer >> bitwrite_buffer_size;
+  return b;
+}
+
 // Reading v from "left to right", we
 // emit the l bits of v.
 void emit(uint32_t v, uint8_t l) {
-  for (; l;) {
-    DEBUG(3, "emit, inloop: l=%d, bitwriter_buffer_size=%d\n", l, bitwrite_buffer_size);
-    // Do we have enough to get an emittable value?
-    size_t max_bits_to_enbuffer =
-        BITWRITE_BUFFER_MAX_SIZE - bitwrite_buffer_size;
-    ASSERT(max_bits_to_enbuffer);
-
-    // bits_to_write = min(l, max_bits_to_enbuffer);
-    size_t bits_to_write = l;
-    if (bits_to_write > max_bits_to_enbuffer) {
-      bits_to_write = max_bits_to_enbuffer;
-    }
-
-    // Select the topmost of those bits:
-    size_t w = v >> (l - bits_to_write);
-
-    uint32_t mask = (1 << bits_to_write) - 1;
-    bitwrite_buffer = (bitwrite_buffer << bits_to_write) | (w & mask);
-    bitwrite_buffer_size += bits_to_write;
-    if (bitwrite_buffer_size == 8) {
-      DEBUG(3, "emit:fputc(%#x)\n", bitwrite_buffer);
-      fputc(bitwrite_buffer, lzw_output_file);
-      lzw_bytes_written++;
-      bitwrite_buffer = 0;
-      bitwrite_buffer_size = 0;
-    }
-
-    ASSERT(bits_to_write <= l);
-    l -= bits_to_write;
+  DEBUG(3, "emit, inloop: l=%d, bitwriter_buffer_size=%d\n", l, bitwrite_buffer_size);
+  bitwrite_buffer_push_bits(v, l);
+  while (bitwrite_buffer_size >= 8) {
+    char c = bitwrite_buffer_pop_byte();
+    fputc(c, lzw_output_file);
+    lzw_bytes_written++;
   }
 }
 
@@ -234,19 +225,21 @@ curr != root ? "true": "false", bitwrite_buffer_size != 0 ? "true" : "false");
     curr = root;
   }
   if (bitwrite_buffer_size != 0) {
-    emit(0, BITWRITE_BUFFER_MAX_SIZE - bitwrite_buffer_size);
+    // cap off our buffer
+    emit(0, 8 - (bitwrite_buffer_size % 8));
+    assert(bitwrite_buffer_size == 0);
   }
 }
 
 void bitread_buffer_push_byte(uint8_t c) {
-  assert(bitread_buffer_size + 8 < BITREAD_BUFFER_MAX_SIZE);
+  ASSERT(bitread_buffer_size + 8 < BITREAD_BUFFER_MAX_SIZE);
   bitread_buffer <<= 8;
   bitread_buffer |= c;
   bitread_buffer_size += 8;
 }
 uint32_t bitread_buffer_pop_bits(uint32_t bitcount) {
-  assert(bitcount < 32);
-  assert(bitread_buffer_size >= bitcount);
+  ASSERT(bitcount < 32);
+  ASSERT(bitread_buffer_size >= bitcount);
   uint64_t bitread_buffer_copy = bitread_buffer;
   // slide down the "oldest" bits
   bitread_buffer_copy >>= (bitread_buffer_size - bitcount);
