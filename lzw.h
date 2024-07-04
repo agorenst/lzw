@@ -11,6 +11,7 @@ void lzw_destroy_state(void);
 extern FILE* lzw_input_file;
 extern FILE* lzw_output_file;
 extern uint32_t lzw_max_key;
+extern uint32_t lzw_next_key;
 
 extern uint64_t lzw_bytes_written;
 extern uint64_t lzw_bytes_read;

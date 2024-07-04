@@ -92,18 +92,21 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
 
   // uint8_t chunkSize = Data[Size-1];
   // Size--;
+  lzw_max_key = 500;
 
   char *encodechunks = NULL;
   size_t encodechunks_size = 0;
   lzw_init();
   init_streams((char*)Data, Size, &encodechunks, &encodechunks_size);
   while (!feof(lzw_input_file)) {
-    lzw_encode(1024);
+    lzw_encode(7);
   }
   lzw_encode_end();
+  //fprintf(stderr, "max size: %u\n", lzw_next_key);
   lzw_destroy_state();
   close_streams();
-  //fprintf(stderr, "encode size: %zu\n", encodechunks_size);
+  assert(lzw_bytes_read == Size);
+  assert(lzw_bytes_written == encodechunks_size);
 
   char *decodechunks = NULL;
   size_t decodechunks_size;
@@ -111,10 +114,12 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
   init_streams(encodechunks, encodechunks_size, &decodechunks,
                &decodechunks_size);
   while (!feof(lzw_input_file)) {
-    lzw_decode(1024);
+    lzw_decode(7);
   }
   lzw_destroy_state();
   close_streams();
+  assert(lzw_bytes_read == encodechunks_size);
+  assert(lzw_bytes_written == Size);
 
   assert(Size == decodechunks_size);
   assert(!memcmp(decodechunks, Data, Size));

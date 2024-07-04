@@ -32,6 +32,10 @@ FILE *lzw_output_file;
 uint64_t lzw_bytes_written = 0;
 uint64_t lzw_bytes_read = 0;
 
+// There's an implicit invariant that our lzw_length can never be more than 32,
+// and this means our buffers always need at least 2 uses before overflowing.
+// Some of our iteration depends on that (in particular emit, which unconditionally
+// enbuffers something before trying to drain it).
 uint64_t bitread_buffer = 0;
 uint32_t bitread_buffer_size = 0;
 const uint32_t BITREAD_BUFFER_MAX_SIZE = sizeof(bitread_buffer) * 8;
@@ -128,6 +132,7 @@ void lzw_destroy_state(void) {
   }
   lzw_next_key = 0;
   if (!feof(lzw_input_file) && bitread_buffer_size >= 8) {
+    assert(false);
     DEBUG(3, "lzw_destroy_state: pushing back\n");
     // Extract the topmost 8 bits and put them back.
     uint32_t last_read = bitread_buffer_pop_bits(8);
@@ -238,7 +243,6 @@ void bitread_buffer_push_byte(uint8_t c) {
   bitread_buffer_size += 8;
 }
 uint32_t bitread_buffer_pop_bits(uint32_t bitcount) {
-  ASSERT(bitcount < 32);
   ASSERT(bitread_buffer_size >= bitcount);
   uint64_t bitread_buffer_copy = bitread_buffer;
   // slide down the "oldest" bits
@@ -252,39 +256,14 @@ uint32_t bitread_buffer_pop_bits(uint32_t bitcount) {
 bool readbits(uint32_t *v) {
   while (bitread_buffer_size < lzw_length) {
     uint32_t c = fgetc(lzw_input_file);
-    if (c != EOF) {
-      lzw_bytes_read++;
-      bitread_buffer <<= 8;
-      bitread_buffer |= (uint8_t)c;
-      bitread_buffer_size += 8;
-    } else {
-      if (bitread_buffer_size != 0) {
-        // Read in the trailing zeros.
-        bitread_buffer <<= (lzw_length - bitread_buffer_size);
-        bitread_buffer_size = lzw_length;
-        *v = bitread_buffer;
-        *v &= (1 << bitread_buffer_size) - 1;
-        bitread_buffer_size = 0;
-        return *v != 0;
-      }
+    if (c == EOF) {
       return false;
     }
+    lzw_bytes_read++;
+    bitread_buffer_push_byte(c);
   }
-  uint64_t bitread_buffer_copy = bitread_buffer;
-  bitread_buffer_copy >>= (bitread_buffer_size - lzw_length);
-  bitread_buffer_copy &= (1 << lzw_length) - 1;
-  *v = bitread_buffer_copy;
-  bitread_buffer_size -= lzw_length;
+  *v = bitread_buffer_pop_bits(lzw_length);
   return true;
-}
-
-void pushbits(uint32_t oldkey, uint8_t oldlen) {
-  if (!(BITREAD_BUFFER_MAX_SIZE - bitread_buffer_size >= oldlen)) {
-    fprintf(stderr, "MAX_BUFFER_LEN = %X, readBufferLength = %X, oldLen = %X\n",
-            BITREAD_BUFFER_MAX_SIZE, bitread_buffer_size, oldlen);
-  }
-  ASSERT(BITREAD_BUFFER_MAX_SIZE - bitread_buffer_size >= oldlen);
-  bitread_buffer_size += oldlen;
 }
 
 bool lzw_valid_key(uint32_t k) {
@@ -307,11 +286,11 @@ size_t lzw_decode(size_t limit) {
     ASSERT(l);
     for (uint32_t i = 0; i < l; ++i) {
       fputc(s[i], lzw_output_file);
-      lzw_bytes_written++;
       DEBUG_STMT(bool b =)
       lzw_next_char(s[i]);
       ASSERT(!b);
     }
+    lzw_bytes_written += l;
     read += l;
 
     if (key_requires_bigger_length(lzw_next_key + 1)) {
@@ -319,10 +298,12 @@ size_t lzw_decode(size_t limit) {
     }
 
     // peek at the next string:
-    bool valid = readbits(&curr_key);
-    if (!valid)
+    if (!readbits(&curr_key)) {
+      // if we're at EOF our various checks will fail,
+      // but we're about to early-out anyways.
       break;
-    pushbits(curr_key, lzw_length);
+    }
+    bitread_buffer_size += lzw_length;
 
     // Find the next character.
     // If the next key is valid, that means
@@ -334,9 +315,9 @@ size_t lzw_decode(size_t limit) {
     // really reading the next string.
     if (lzw_valid_key(curr_key)) {
       s = lzw_data[curr_key].data;
-    //} else {
+    } else {
     //  fprintf(stderr, "lzw_length: %u, curr_key: %u\n", lzw_length, curr_key);
-    //  ASSERT(lzw_data[curr_key - 1].data != NULL);
+      ASSERT(lzw_data[curr_key - 1].data != NULL);
     }
     DEBUG_STMT(bool b =)
     lzw_next_char(s[0]);
