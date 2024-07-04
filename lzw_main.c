@@ -14,50 +14,31 @@ bool do_decode = false;
 bool do_encode = false;
 bool trace_ratio = false;
 
+int verbosity = 0;
+
 size_t page_size = 0;
 size_t reset_limit = 0;
 size_t decompressed_byte_limit = 0;
 
-uint64_t prev_bytes_written = 0;
-uint64_t prev_bytes_read = 0;
-
 void ratio_tracker() {
+  static uint64_t prev_bytes_written = 0;
+  static uint64_t prev_bytes_read = 0;
   if (trace_ratio) {
     uint64_t bytes_written = lzw_bytes_written - prev_bytes_written;
     uint64_t bytes_read = lzw_bytes_read - prev_bytes_read;
     prev_bytes_written = lzw_bytes_written;
     prev_bytes_read = lzw_bytes_read;
     double compression_ratio = (double)bytes_written / (double)bytes_read;
-    fprintf(stderr, "compression_ratio: %f\tbytes_read: %zu\n",
-            compression_ratio, lzw_bytes_read);
+    fprintf(stderr, "compression_ratio: %f\tbytes_written: %zu\tbytes_read: %zu\tlzw_bytes_read: %zu\n",
+            compression_ratio, bytes_written, bytes_read, lzw_bytes_read);
   }
 }
 
-void process_stream(size_t page_size, size_t limit) {
-  lzw_init();
-  size_t total_processed = 0;
-  size_t processed = 0;
-
-  do {
-    if (do_encode) {
-      processed = lzw_encode(page_size);
-    }
-    else {
-      processed = lzw_decode(page_size);
-    }
-    ratio_tracker();
-    total_processed += processed;
-  } while (processed != 0 && (!limit || total_processed < limit));
-
-  if (do_encode) {
-    lzw_encode_end();
-  }
-  lzw_destroy_state();
-}
+void process_stream() {}
 
 int main(int argc, char *argv[]) {
   char c;
-  while ((c = getopt(argc, argv, "deg:m:p:r:ql:")) != -1) {
+  while ((c = getopt(argc, argv, "deg:m:p:r:ql:v:")) != -1) {
     switch (c) {
     case 'd':
       do_decode = true;
@@ -83,6 +64,9 @@ int main(int argc, char *argv[]) {
     case 'l':
       decompressed_byte_limit = atoi(optarg);
       break;
+      case 'v':
+      verbosity = atoi(optarg);
+      break;
     default:
       break;
     }
@@ -100,12 +84,24 @@ int main(int argc, char *argv[]) {
     page_size = 1024;
   }
 
+  if (verbosity) {
+    fprintf(stderr, "lzw_max_key: %d\n", lzw_max_key);
+    fprintf(stderr, "page_size  : %zu\n", page_size);
+  }
+
   lzw_input_file = stdin;
   lzw_output_file = stdout;
 
+  lzw_init();
   while (!feof(lzw_input_file)) {
-    process_stream(page_size, reset_limit);
+    if (do_encode) {
+      lzw_encode(page_size);
+    } else {
+      lzw_decode(page_size);
+    }
+    ratio_tracker();
   }
+  lzw_destroy_state();
 
   return 0;
 }

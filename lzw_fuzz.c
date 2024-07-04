@@ -101,7 +101,6 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
   while (!feof(lzw_input_file)) {
     lzw_encode(7);
   }
-  lzw_encode_end();
   //fprintf(stderr, "max size: %u\n", lzw_next_key);
   lzw_destroy_state();
   close_streams();

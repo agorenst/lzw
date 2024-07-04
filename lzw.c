@@ -207,8 +207,10 @@ size_t lzw_encode(size_t l) {
   for (; i < l; i++) {
     int c = fgetc(lzw_input_file);
     DEBUG(3, "lzw_encode:fgetc(lzw_input_file)=%#x\n", c);
-    if (c == EOF)
+    if (c == EOF) {
+      lzw_encode_end();
       break;
+    }
     lzw_bytes_read++;
     bool new_string = lzw_next_char(c);
     if (new_string) {
@@ -320,7 +322,7 @@ size_t lzw_decode(size_t limit) {
     } else {
       //  fprintf(stderr, "lzw_length: %u, curr_key: %u\n", lzw_length,
       //  curr_key);
-      ASSERT(lzw_data[curr_key - 1].data != NULL);
+      ASSERT(lzw_valid_key(curr_key-1));
     }
     DEBUG_STMT(bool b =)
     lzw_next_char(s[0]);
