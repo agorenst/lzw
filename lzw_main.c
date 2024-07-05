@@ -20,25 +20,38 @@ size_t page_size = 0;
 size_t reset_limit = 0;
 size_t decompressed_byte_limit = 0;
 
-void ratio_tracker() {
-  static uint64_t prev_bytes_written = 0;
-  static uint64_t prev_bytes_read = 0;
-  if (trace_ratio) {
-    uint64_t bytes_written = lzw_bytes_written - prev_bytes_written;
-    uint64_t bytes_read = lzw_bytes_read - prev_bytes_read;
-    prev_bytes_written = lzw_bytes_written;
-    prev_bytes_read = lzw_bytes_read;
-    double compression_ratio = (double)bytes_written / (double)bytes_read;
-    fprintf(stderr, "compression_ratio: %f\tbytes_written: %zu\tbytes_read: %zu\tlzw_bytes_read: %zu\n",
-            compression_ratio, bytes_written, bytes_read, lzw_bytes_read);
+bool trim_input = false;
+int ratio_based_reader(void) {
+  if (trim_input) {
+    return EOF;
   }
+  return fgetc(lzw_input_file);
+}
+void ratio_based_emitter(char b) { fputc(b, lzw_output_file); }
+
+uint64_t prev_bytes_written = 0;
+uint64_t prev_bytes_read = 0;
+double next_ratio() {
+  uint64_t bytes_written = lzw_bytes_written - prev_bytes_written;
+  uint64_t bytes_read = lzw_bytes_read - prev_bytes_read;
+  prev_bytes_written = lzw_bytes_written;
+  prev_bytes_read = lzw_bytes_read;
+  //fprintf(stderr, "bytes_written: %zu\n", bytes_written);
+  //fprintf(stderr, "bytes_read:    %zu\n", bytes_read);
+  assert(bytes_written);
+  double compression_ratio = (double)bytes_written / (double)bytes_read;
+  return compression_ratio;
 }
 
-void process_stream() {}
+void reset_written() {
+  prev_bytes_written = 0;
+  prev_bytes_read = 0;
+}
 
 int main(int argc, char *argv[]) {
   char c;
-  while ((c = getopt(argc, argv, "deg:m:p:r:ql:v:")) != -1) {
+  bool do_ratio = false;
+  while ((c = getopt(argc, argv, "deg:m:p:r:ql:v:x")) != -1) {
     switch (c) {
     case 'd':
       do_decode = true;
@@ -64,9 +77,11 @@ int main(int argc, char *argv[]) {
     case 'l':
       decompressed_byte_limit = atoi(optarg);
       break;
-      case 'v':
+    case 'v':
       verbosity = atoi(optarg);
       break;
+      case 'x':
+      do_ratio = true;
     default:
       break;
     }
@@ -91,6 +106,10 @@ int main(int argc, char *argv[]) {
 
   lzw_input_file = stdin;
   lzw_output_file = stdout;
+  if (do_ratio) {
+    lzw_reader = ratio_based_reader;
+    lzw_emitter = ratio_based_emitter;
+  }
 
   lzw_init();
   while (!feof(lzw_input_file)) {
@@ -99,7 +118,25 @@ int main(int argc, char *argv[]) {
     } else {
       lzw_decode(page_size);
     }
-    ratio_tracker();
+    double compression_ratio = next_ratio();
+    if (trace_ratio) {
+      fprintf(stderr, "compression_ratio: %f\tlzw_bytes_read: %zu\n",
+              compression_ratio, lzw_bytes_read);
+    }
+    if (do_ratio && (compression_ratio > 1)) {
+      trim_input = true;
+      // Force a flush, basically.
+      if (do_encode) {
+        lzw_encode(1024);
+      } else {
+        lzw_decode(1024);
+      }
+      trim_input = false;
+      // and restart?
+      lzw_destroy_state();
+      lzw_init();
+      reset_written();
+    }
   }
   lzw_destroy_state();
 

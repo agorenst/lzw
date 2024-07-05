@@ -8,6 +8,13 @@ size_t lzw_decode(size_t);
 void lzw_init(void);
 void lzw_destroy_state(void);
 
+typedef void (*lzw_emitter_t)(char);
+typedef int (*lzw_reader_t)(void);
+void lzw_default_emitter(char);
+int lzw_default_reader(void);
+extern lzw_emitter_t lzw_emitter;
+extern lzw_reader_t lzw_reader;
+
 extern FILE* lzw_input_file;
 extern FILE* lzw_output_file;
 extern uint32_t lzw_max_key;

@@ -43,6 +43,19 @@ uint64_t bitwrite_buffer = 0;
 uint32_t bitwrite_buffer_size = 0;
 const uint32_t BITWRITE_BUFFER_MAX_SIZE = sizeof(bitwrite_buffer) * 8;
 
+// We encode the output as a sequence of bits, which can cause
+// complications if we need to say, emit, 13 bits.
+// We store things 8 bits at a time, to match fputc.
+void lzw_default_emitter(char b) {
+  fputc(b, lzw_output_file);
+}
+lzw_emitter_t lzw_emitter = lzw_default_emitter;
+
+int lzw_default_reader(void) {
+  return fgetc(lzw_input_file);
+}
+lzw_reader_t lzw_reader = lzw_default_reader;
+
 // Before we get too much into executable code,
 // we want to express the different modes we can run in.
 // I.e., debug levels
@@ -130,16 +143,7 @@ void lzw_destroy_state(void) {
     lzw_data = NULL;
   }
   lzw_next_key = 0;
-  assert((bitread_buffer & ((1 << bitread_buffer_size)-1)) == 0);
-  if (!feof(lzw_input_file) && bitread_buffer_size >= 8) {
-    assert(false);
-    DEBUG(3, "lzw_destroy_state: pushing back\n");
-    // Extract the topmost 8 bits and put them back.
-    uint32_t last_read = bitread_buffer_pop_bits(8);
-    assert(last_read < 256);
-    ungetc((char)last_read, lzw_input_file);
-    lzw_bytes_read--;
-  }
+  ASSERT((bitread_buffer & ((1 << bitread_buffer_size)-1)) == 0);
 }
 
 void bitwrite_buffer_push_bits(uint32_t v, uint8_t l) {
@@ -164,7 +168,7 @@ void emit(uint32_t v, uint8_t l) {
   bitwrite_buffer_push_bits(v, l);
   while (bitwrite_buffer_size >= 8) {
     char c = bitwrite_buffer_pop_byte();
-    fputc(c, lzw_output_file);
+    lzw_emitter(c);
     lzw_bytes_written++;
   }
 }
@@ -205,7 +209,7 @@ void lzw_init() {
 size_t lzw_encode(size_t l) {
   size_t i = 0;
   for (; i < l; i++) {
-    int c = fgetc(lzw_input_file);
+    int c = lzw_reader();
     DEBUG(3, "lzw_encode:fgetc(lzw_input_file)=%#x\n", c);
     if (c == EOF) {
       lzw_encode_end();
@@ -236,7 +240,7 @@ void lzw_encode_end(void) {
   if (bitwrite_buffer_size != 0) {
     // cap off our buffer
     emit(0, 8 - (bitwrite_buffer_size % 8));
-    assert(bitwrite_buffer_size == 0);
+    ASSERT(bitwrite_buffer_size == 0);
   }
 }
 
@@ -259,7 +263,7 @@ uint32_t bitread_buffer_pop_bits(uint32_t bitcount) {
 // This will read the next bits up to our buffer.
 bool readbits(uint32_t *v) {
   while (bitread_buffer_size < lzw_length) {
-    uint32_t c = fgetc(lzw_input_file);
+    uint32_t c = lzw_reader();
     if (c == EOF) {
       return false;
     }
@@ -289,7 +293,7 @@ size_t lzw_decode(size_t limit) {
     uint32_t l = lzw_data[curr_key].len;
     ASSERT(l);
     for (uint32_t i = 0; i < l; ++i) {
-      fputc(s[i], lzw_output_file);
+      lzw_emitter(s[i]);
       DEBUG_STMT(bool b =)
       lzw_next_char(s[i]);
       ASSERT(!b);
