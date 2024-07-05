@@ -112,18 +112,26 @@ int main(int argc, char *argv[]) {
   }
 
   lzw_init();
-  while (!feof(lzw_input_file)) {
+  for (;;) {
+    bool did_work = true;
+    size_t bytes_processed = 0;
     if (do_encode) {
-      lzw_encode(page_size);
+      bytes_processed = lzw_encode(page_size);
     } else {
-      lzw_decode(page_size);
+      bytes_processed = lzw_decode(page_size);
     }
+    did_work = bytes_processed != 0;
+    if (!did_work) {
+      break;
+    }
+
     double compression_ratio = next_ratio();
     if (trace_ratio) {
       fprintf(stderr, "compression_ratio: %f\tlzw_bytes_read: %zu\n",
               compression_ratio, lzw_bytes_read);
     }
     if (do_ratio && (compression_ratio > 1)) {
+      assert(false);
       trim_input = true;
       // Force a flush, basically.
       if (do_encode) {

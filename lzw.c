@@ -51,8 +51,37 @@ void lzw_default_emitter(char b) {
 }
 lzw_emitter_t lzw_emitter = lzw_default_emitter;
 
+const int MAX_BUFFER = 1024*1024;
+uint8_t default_reader_buffer[1024*1024];
+
+int default_reader_buffer_length = 0;
+int default_reader_buffer_index = 0;
 int lzw_default_reader(void) {
-  return fgetc(lzw_input_file);
+  //return fgetc(lzw_input_file);
+  //fprintf(stderr,
+  //        "default_reader_buffer_index:%d, default_reader_buffer_length:%d\n",
+  //        default_reader_buffer_index, default_reader_buffer_length);
+  //if (default_reader_buffer_length < MAX_BUFFER) {
+    //fprintf(stderr, "len:%d,index:%d\n", default_reader_buffer_length, default_reader_buffer_index);
+  //}
+  if (default_reader_buffer_index < default_reader_buffer_length) {
+    //fprintf(stderr, "returning read\n");
+    return default_reader_buffer[default_reader_buffer_index++];
+  }
+  default_reader_buffer_index = 0;
+  default_reader_buffer_length =
+      fread(default_reader_buffer, sizeof(default_reader_buffer[0]), MAX_BUFFER,
+            lzw_input_file);
+  //fprintf(stderr, "just fread(%d)\n", default_reader_buffer_length);
+  if (default_reader_buffer_length == 0) {
+    //fprintf(stderr, "returning feof, right? %d %d\n", ferror(lzw_input_file),
+            //feof(lzw_input_file));
+    assert(default_reader_buffer_index == 0);
+    assert(!ferror(lzw_input_file));
+    assert(feof(lzw_input_file));
+    return EOF;
+  }
+  return lzw_default_reader();
 }
 lzw_reader_t lzw_reader = lzw_default_reader;
 
@@ -264,6 +293,7 @@ uint32_t bitread_buffer_pop_bits(uint32_t bitcount) {
 bool readbits(uint32_t *v) {
   while (bitread_buffer_size < lzw_length) {
     uint32_t c = lzw_reader();
+    DEBUG(3, "readbits:lzw_reader()=%#x\n", c);
     if (c == EOF) {
       return false;
     }
