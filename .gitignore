@@ -1,0 +1,3 @@
+FUZZ_CORPUS/*
+.vscode/*
+perf.data*
