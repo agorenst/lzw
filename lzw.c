@@ -212,9 +212,10 @@ void lzw_init() {
 
 size_t lzw_encode(size_t l) {
   size_t i = 0;
-  for (; i < l; i++) {
+  bool emitted = false;
+  for (; i < l || !emitted; i++) {
     int c = lzw_reader();
-    DEBUG(3, "lzw_encode:fgetc(lzw_input_file)=%#x\n", c);
+    DEBUG(3, "lzw_encode:lzw_reader()=%#x\n", c);
     if (c == EOF) {
       lzw_encode_end();
       break;
@@ -222,12 +223,15 @@ size_t lzw_encode(size_t l) {
     lzw_bytes_read++;
     bool new_string = lzw_next_char(c);
     if (new_string) {
+      emitted = true;
       // Flush the current string
       emit(curr->key, lzw_length);
       curr = root;
       update_length();
       // Now actually start with c
       lzw_next_char(c);
+    } else {
+      emitted = false;
     }
   }
   return i;

@@ -32,17 +32,19 @@ void ratio_based_emitter(char b) { fputc(b, lzw_output_file); }
 
 uint64_t prev_bytes_written = 0;
 uint64_t prev_bytes_read = 0;
+uint64_t page_bytes_written = 0;
+uint64_t page_bytes_read = 0;
 double next_ratio() {
-  uint64_t bytes_written = lzw_bytes_written - prev_bytes_written;
-  uint64_t bytes_read = lzw_bytes_read - prev_bytes_read;
+  page_bytes_written = lzw_bytes_written - prev_bytes_written;
+  page_bytes_read = lzw_bytes_read - prev_bytes_read;
   prev_bytes_written = lzw_bytes_written;
   prev_bytes_read = lzw_bytes_read;
-  //fprintf(stderr, "bytes_written: %zu\n", bytes_written);
-  //fprintf(stderr, "bytes_read:    %zu\n", bytes_read);
-  assert(bytes_written);
-  double compression_ratio = (double)bytes_written / (double)bytes_read;
+  //fprintf(stderr, "page_bytes_written: %zu\n", page_bytes_written);
+  //fprintf(stderr, "page_bytes_read:    %zu\n", page_bytes_read);
+  assert(page_bytes_written);
+  double compression_ratio = (double)page_bytes_written / (double)page_bytes_read;
   if (do_decode) {
-    compression_ratio = (double)bytes_read / (double)bytes_written;
+    compression_ratio = (double)page_bytes_read / (double)page_bytes_written;
   }
   return compression_ratio;
 }
@@ -125,7 +127,7 @@ int main(int argc, char *argv[]) {
   }
 
   lzw_init();
-  for (;;) {
+  for (int i = 0;;i++) {
     bool did_work = true;
     size_t bytes_processed = 0;
     if (do_encode) {
@@ -141,12 +143,13 @@ int main(int argc, char *argv[]) {
     double compression_ratio = next_ratio();
     if (trace_ratio) {
       fprintf(ratio_log_file,
-              "%s ratio: %f\tlzw_bytes_read: %zu\tlzw_bytes_written: %zu\n",
+              //"%s ratio: %f\tlzw_bytes_read: %zu\tlzw_bytes_written: %zu\n",
+              "%s ratio: %f\tpage_bytes_read: %zu\tpage_bytes_written: %zu\n",
               do_encode ? "compression  " : "decompression", compression_ratio,
-              lzw_bytes_read, lzw_bytes_written);
+              page_bytes_read, page_bytes_written);
     }
-    if (do_ratio && (compression_ratio > 1)) {
-      assert(false);
+    if (i > 0 && do_ratio && (compression_ratio > 0.8)) {
+      fprintf(stderr, "resetting\n");
       trim_input = true;
       // Force a flush, basically.
       if (do_encode) {
