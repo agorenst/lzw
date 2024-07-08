@@ -13,6 +13,7 @@ char *optarg;
 bool do_decode = false;
 bool do_encode = false;
 bool trace_ratio = false;
+char* ratio_log_filename = NULL;
 
 int verbosity = 0;
 
@@ -40,6 +41,9 @@ double next_ratio() {
   //fprintf(stderr, "bytes_read:    %zu\n", bytes_read);
   assert(bytes_written);
   double compression_ratio = (double)bytes_written / (double)bytes_read;
+  if (do_decode) {
+    compression_ratio = (double)bytes_read / (double)bytes_written;
+  }
   return compression_ratio;
 }
 
@@ -51,7 +55,7 @@ void reset_written() {
 int main(int argc, char *argv[]) {
   char c;
   bool do_ratio = false;
-  while ((c = getopt(argc, argv, "deg:m:p:r:ql:v:x")) != -1) {
+  while ((c = getopt(argc, argv, "deg:m:p:r:q:l:v:x")) != -1) {
     switch (c) {
     case 'd':
       do_decode = true;
@@ -73,6 +77,10 @@ int main(int argc, char *argv[]) {
       break;
     case 'q':
       trace_ratio = true;
+      // if optarg is anything but '-'
+      if (strcmp(optarg, "-")) {
+        ratio_log_filename = strdup(optarg);
+      }
       break;
     case 'l':
       decompressed_byte_limit = atoi(optarg);
@@ -111,6 +119,11 @@ int main(int argc, char *argv[]) {
     lzw_emitter = ratio_based_emitter;
   }
 
+  FILE* ratio_log_file = stderr;
+  if (ratio_log_filename) {
+    ratio_log_file = fopen(ratio_log_filename, "w");
+  }
+
   lzw_init();
   for (;;) {
     bool did_work = true;
@@ -127,17 +140,19 @@ int main(int argc, char *argv[]) {
 
     double compression_ratio = next_ratio();
     if (trace_ratio) {
-      fprintf(stderr, "compression_ratio: %f\tlzw_bytes_read: %zu\n",
-              compression_ratio, lzw_bytes_read);
+      fprintf(ratio_log_file,
+              "%s ratio: %f\tlzw_bytes_read: %zu\tlzw_bytes_written: %zu\n",
+              do_encode ? "compression  " : "decompression", compression_ratio,
+              lzw_bytes_read, lzw_bytes_written);
     }
     if (do_ratio && (compression_ratio > 1)) {
       assert(false);
       trim_input = true;
       // Force a flush, basically.
       if (do_encode) {
-        lzw_encode(1024);
+        while(lzw_encode(1024));
       } else {
-        lzw_decode(1024);
+        while(lzw_decode(1024));
       }
       trim_input = false;
       // and restart?

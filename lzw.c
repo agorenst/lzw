@@ -104,6 +104,7 @@ int lzw_debug_level = 0;
 #define DEBUG_STMT(x) x
 #endif
 
+
 // The primary action of this table is to ingest
 // the next byte, and maintain the correct encoding
 // information for the implicit string seen-so-far.
