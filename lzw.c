@@ -51,9 +51,6 @@ void lzw_default_emitter(char b) {
 }
 lzw_emitter_t lzw_emitter = lzw_default_emitter;
 
-const int MAX_BUFFER = 1024*1024;
-uint8_t default_reader_buffer[1024*1024];
-
 int lzw_default_reader(void) {
   return fgetc(lzw_input_file);
 }
