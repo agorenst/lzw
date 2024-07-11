@@ -1,19 +1,25 @@
-CC=afl-clang-fast
-# CC=clang
+# CC=afl-clang-fast
+CC=clang
 # CFLAGS=-Wall -Werror -g -fsanitize=address,undefined -std=c99 -pedantic
 CFLAGS=-Wall -Werror -g -O3 -flto -fsanitize=address,undefined
 #CFLAGS=-Wall -Werror -g -std=c99 -pedantic -O2
 #CFLAGS=-Wall -Werror -g -std=c99 -pedantic -O3 -flto -fsanitize=address,undefined
 
-lzw_main: lzw.o
+
+lzw_fuzz: CFLAGS=-Wall -Werror -g -fsanitize=address,undefined,fuzzer -DFUZZ_MODE
+lzw_fuzz: lzw_main.o lzw.o
+	$(CC) $(CFLAGS) $^ -o $@
+
+lzw_main: lzw_main.c lzw.o
+	$(CC) $(CFLAGS) $^ -o $@
 
 lzw_run_test: lzw_test
 	./lzw_test
 
 lzw_test: lzw.o
 
-lzw_fuzz: CFLAGS=-Wall -Werror -g -fsanitize=address,undefined,fuzzer -O3 -flto # -DNDEBUG
-lzw_fuzz: lzw.o
+# lzw_fuzz: CFLAGS=-Wall -Werror -g -fsanitize=address,undefined,fuzzer -O3 -flto # -DNDEBUG
+# lzw_fuzz: lzw.o
 
 # 4212811795
 lzw_fuzz_run: lzw_fuzz

@@ -76,19 +76,24 @@ int lzw_debug_level = 0;
 #endif
 
 
+enum {
+  NEXT_CHAR_CONTINUE = 0,
+  NEXT_CHAR_MAX,
+  NEXT_CHAR_NEW
+};
 // The primary action of this table is to ingest
 // the next byte, and maintain the correct encoding
 // information for the implicit string seen-so-far.
 // That's captured in this function:
-bool lzw_next_char(uint8_t c) {
+int lzw_next_char(uint8_t c) {
   if (curr->children[c]) {
     DEBUG(2, "key %u -> key %u\n", curr->key, curr->children[c]->key);
     curr = curr->children[c];
-    return false;
+    return NEXT_CHAR_CONTINUE;
   }
   // we have reached the end of the string.
   if (lzw_max_key && lzw_next_key >= lzw_max_key) {
-    return true;
+    return NEXT_CHAR_MAX;
   }
   // Create the new fields for the new node
   const uint32_t k = lzw_next_key++;
@@ -103,7 +108,7 @@ bool lzw_next_char(uint8_t c) {
   curr->children[c]->key = k;
   lzw_data[k].data = data;
   lzw_data[k].len = l + 1;
-  return true;
+  return NEXT_CHAR_NEW;
 }
 
 // We also have book-keeping of when we have to
@@ -340,4 +345,10 @@ size_t lzw_decode(size_t limit) {
     curr = root;
   }
   return read;
+}
+
+void lzw_debug_emit_state(FILE* out) {
+  // emit the table
+  // emit the buffers
+  // 
 }
