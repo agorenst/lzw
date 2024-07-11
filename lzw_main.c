@@ -81,7 +81,6 @@ void process_stream() {
   }
 
   for (int block_count = 0;; block_count++) {
-    fprintf(stderr, "processing block: %d\n", block_count);
     reset_written();
     lzw_init();
 
@@ -194,7 +193,6 @@ void round_trip_in_memory(const char* Data, size_t Size) {
   init_streams((char*)Data, Size, &encodechunks, &encodechunks_size);
   do_encode = true;
   do_decode = false;
-  printf("Encoding stream\n");
   process_stream();
   close_streams();
   assert(total_stream_read == Size);
@@ -206,7 +204,6 @@ void round_trip_in_memory(const char* Data, size_t Size) {
                &decodechunks_size);
   do_encode = false;
   do_decode = true;
-  printf("Decoding stream\n");
   process_stream();
   close_streams();
   assert(total_stream_read == encodechunks_size);
@@ -227,6 +224,9 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
   page_size=7;
   lzw_max_key=512;
   do_ratio = true;
+  if (do_ratio) {
+    lzw_reader = ratio_based_reader;
+  }
   round_trip_in_memory((const char*) Data, Size);
   return 0;
 }
@@ -308,67 +308,7 @@ int main(int argc, char *argv[]) {
   lzw_output_file = user_output;
 
   if (correctness_roundtrip) {
-    fprintf(stderr, "correctness roundtrip!\n");
     round_trip();
-    //assert(!do_encode && !do_decode);
-    //// Drain input into 
-    //char *inputbuffer = NULL;
-    //size_t inputbuffer_size = 0;
-    //FILE* copy_file = open_memstream(&inputbuffer, &inputbuffer_size);
-    //char buffer[1028];
-    //size_t n = 0;
-    //while ((n = fread(buffer, 1, sizeof(buffer), lzw_input_file)) > 0) {
-    //    fwrite(buffer, 1, n, copy_file);
-    //}
-    //fclose(stdin);
-    //fclose(copy_file);
-    //round_trip_in_memory(inputbuffer, inputbuffer_size);
-
-    // Have us emit to an in-memory buffer.
-    //char *compressedbuffer = NULL;
-    //size_t compressedbuffer_size = 0;
-    //lzw_output_file = open_memstream(&compressedbuffer, &compressedbuffer_size);
-    //// Listen in to our input and copy it to a local file.
-    //char *inputbuffer = NULL;
-    //size_t inputbuffer_size = 0;
-    //lzw_input_file = stdin;
-    //copy_lzw_reader_file = open_memstream(&inputbuffer, &inputbuffer_size);
-    //lzw_reader = copy_lzw_reader;
-
-    //// Run the compression
-    //fprintf(stderr, "Doing encoding\n");
-    //do_encode = true;
-    //process_stream();
-    //fclose(lzw_output_file);
-    //fclose(copy_lzw_reader_file);
-
-    //// Now we restart: our input is now the compressed buffer
-    //FILE *in = fmemopen(compressedbuffer, compressedbuffer_size, "r");
-    //lzw_input_file = in;
-    //if (do_ratio) {
-    //  lzw_reader = ratio_based_reader;
-    //} else {
-    //  lzw_reader = lzw_default_reader;
-    //}
-    //// We output to an in-memory buffer took
-    //char *decompress_out = NULL;
-    //size_t decompress_out_size = 0;
-    //lzw_output_file = open_memstream(&decompress_out, &decompress_out_size);
-    //assert(lzw_output_file);
-    //do_encode = false;
-    //do_decode = true;
-    //fprintf(stderr, "Doing decoding\n");
-    //process_stream();
-    //fclose(lzw_input_file);
-    //fclose(lzw_output_file);
-
-    //fprintf(stderr, "Doing final comparison\n");
-    //// Now do the final comparison
-    //assert(decompress_out_size == inputbuffer_size);
-    //assert(!memcmp(inputbuffer, decompress_out, decompress_out_size));
-    //free(compressedbuffer);
-    //free(inputbuffer);
-    //free(decompress_out);
   } else {
     if (do_encode == do_decode) {
       printf("Error, must uniquely choose encode or decode\n");

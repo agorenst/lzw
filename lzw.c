@@ -78,8 +78,8 @@ int lzw_debug_level = 0;
 
 enum {
   NEXT_CHAR_CONTINUE = 0,
-  NEXT_CHAR_MAX,
-  NEXT_CHAR_NEW
+  NEXT_CHAR_MAX = 1,
+  NEXT_CHAR_NEW = 2
 };
 // The primary action of this table is to ingest
 // the next byte, and maintain the correct encoding
@@ -136,6 +136,16 @@ void lzw_destroy_tree(lzw_node_p t) {
 
 uint32_t bitread_buffer_pop_bits(uint32_t bitcount);
 
+void debug_bitread_buffer() {
+  for (int i = 0; i < BITREAD_BUFFER_MAX_SIZE; i++) {
+    fprintf(stderr, "%c", (bitread_buffer >> (BITREAD_BUFFER_MAX_SIZE - (i+1))) == 1 ? '1' : '0');
+    if (i == bitread_buffer_size) {
+      fprintf(stderr, "|");
+    }
+  }
+  fprintf(stderr, "\t(%d)\n", bitread_buffer_size);
+}
+
 void lzw_destroy_state(void) {
   lzw_destroy_tree(root);
   curr = NULL;
@@ -149,6 +159,12 @@ void lzw_destroy_state(void) {
     lzw_data = NULL;
   }
   lzw_next_key = 0;
+  // We support destorying the state, and then resuming the compression
+  // (from a "fresh" state) on the same input file. This check validates
+  // that we didn't leak anything from the next file into here.
+  if ((bitread_buffer & ((1 << bitread_buffer_size)-1)) != 0) {
+    debug_bitread_buffer();
+  }
   ASSERT((bitread_buffer & ((1 << bitread_buffer_size)-1)) == 0);
 }
 
@@ -317,6 +333,7 @@ size_t lzw_decode(size_t limit) {
     }
 
     // peek at the next string:
+    DEBUG(3, "lzw_decode:peeking\n");
     if (!readbits(&curr_key)) {
       // if we're at EOF our various checks will fail,
       // but we're about to early-out anyways.
