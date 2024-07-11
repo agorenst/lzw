@@ -211,9 +211,9 @@ void lzw_init() {
     update_length();
   }
   //fprintf(stderr, "lzw_next_key=%u\tlzw_clear_code=%zu\n", lzw_next_key, lzw_clear_code);
-  //ASSERT(lzw_clear_code == lzw_next_key);
-  //lzw_next_key++; // reserve 256 for the clear-code.
-  //update_length();
+  ASSERT(lzw_clear_code == lzw_next_key);
+  lzw_next_key++; // reserve 256 for the clear-code.
+  update_length();
   lzw_bytes_read = 0;
   lzw_bytes_written = 0;
 
@@ -325,11 +325,12 @@ size_t lzw_decode(size_t limit) {
   size_t read = 0;
   while (read < limit && readbits(&curr_key)) {
     DEBUG(2, "key %X of %u bits\n", curr_key, lzw_length);
-    //if (curr_key == lzw_clear_code) {
-    //  lzw_destroy_state();
-    //  lzw_init();
-    //  continue;
-    //}
+    if (curr_key == lzw_clear_code) {
+      assert(false);
+      lzw_destroy_state();
+      lzw_init();
+      continue;
+    }
     ASSERT(lzw_valid_key(curr_key));
 
     // emit that string:
@@ -351,8 +352,8 @@ size_t lzw_decode(size_t limit) {
 
     // peek at the next string:
     DEBUG(3, "lzw_decode:peeking\n");
-    //if (!readbits(&curr_key) || curr_key == lzw_clear_code) {
-    if (!readbits(&curr_key)) {
+    if (!readbits(&curr_key) || curr_key == lzw_clear_code) {
+    //if (!readbits(&curr_key)) {
       // if we're at EOF our various checks will fail,
       // but we're about to early-out anyways.
       break;
@@ -371,7 +372,7 @@ size_t lzw_decode(size_t limit) {
       s = lzw_data[curr_key].data;
     } else {
       //fprintf(stderr, "lzw_length: %u, curr_key: %u\n", lzw_length, curr_key);
-      ASSERT(lzw_valid_key(curr_key - 1));
+      ASSERT(curr_key-1 == lzw_clear_code || lzw_valid_key(curr_key - 1));
     }
     DEBUG_STMT(int b =)
     lzw_next_char(s[0]);
