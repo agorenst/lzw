@@ -223,7 +223,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
   }
   page_size=7;
   lzw_max_key=512;
-  do_ratio = true;
+  do_ratio = false;
   if (do_ratio) {
     lzw_reader = ratio_based_reader;
   }

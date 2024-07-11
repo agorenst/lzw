@@ -81,6 +81,7 @@ enum {
   NEXT_CHAR_MAX = 1,
   NEXT_CHAR_NEW = 2
 };
+const size_t lzw_clear_code = 256;
 // The primary action of this table is to ingest
 // the next byte, and maintain the correct encoding
 // information for the implicit string seen-so-far.
@@ -159,12 +160,6 @@ void lzw_destroy_state(void) {
     lzw_data = NULL;
   }
   lzw_next_key = 0;
-  // We support destorying the state, and then resuming the compression
-  // (from a "fresh" state) on the same input file. This check validates
-  // that we didn't leak anything from the next file into here.
-  if ((bitread_buffer & ((1 << bitread_buffer_size)-1)) != 0) {
-    debug_bitread_buffer();
-  }
   ASSERT((bitread_buffer & ((1 << bitread_buffer_size)-1)) == 0);
 }
 
@@ -209,12 +204,16 @@ void lzw_init() {
   curr = root;
   root->key = -1;
   lzw_length = 1;
-  lzw_next_key = 1;
+  lzw_next_key = 0;
   lzw_data = calloc(1 << lzw_length, sizeof(lzw_data_t));
   for (uint16_t i = 0; i < 256; ++i) {
     lzw_next_char(i);
     update_length();
   }
+  //fprintf(stderr, "lzw_next_key=%u\tlzw_clear_code=%zu\n", lzw_next_key, lzw_clear_code);
+  //ASSERT(lzw_clear_code == lzw_next_key);
+  //lzw_next_key++; // reserve 256 for the clear-code.
+  //update_length();
   lzw_bytes_read = 0;
   lzw_bytes_written = 0;
 
@@ -260,6 +259,13 @@ size_t lzw_encode(size_t l) {
     }
   }
   return i;
+}
+
+void lzw_emit_clear_code(void) {
+  emit(lzw_clear_code, lzw_length);
+  lzw_encode_end();
+  lzw_destroy_state();
+  lzw_init();
 }
 
 void lzw_encode_end(void) {
@@ -310,11 +316,8 @@ bool readbits(uint32_t *v) {
 }
 
 bool lzw_valid_key(uint32_t k) {
-  if (k > (1 << (lzw_length))) {
-    fprintf(stderr, "Error, invalid key: %X\n", k);
-  }
   ASSERT(k < (1 << (lzw_length)));
-  return lzw_data[k].data != NULL;
+  return lzw_data[k].data != NULL; // this excludes the clear-code, for instance.
 }
 
 size_t lzw_decode(size_t limit) {
@@ -322,7 +325,13 @@ size_t lzw_decode(size_t limit) {
   size_t read = 0;
   while (read < limit && readbits(&curr_key)) {
     DEBUG(2, "key %X of %u bits\n", curr_key, lzw_length);
+    //if (curr_key == lzw_clear_code) {
+    //  lzw_destroy_state();
+    //  lzw_init();
+    //  continue;
+    //}
     ASSERT(lzw_valid_key(curr_key));
+
     // emit that string:
     uint8_t *s = lzw_data[curr_key].data;
     uint32_t l = lzw_data[curr_key].len;
@@ -342,6 +351,7 @@ size_t lzw_decode(size_t limit) {
 
     // peek at the next string:
     DEBUG(3, "lzw_decode:peeking\n");
+    //if (!readbits(&curr_key) || curr_key == lzw_clear_code) {
     if (!readbits(&curr_key)) {
       // if we're at EOF our various checks will fail,
       // but we're about to early-out anyways.
@@ -360,9 +370,8 @@ size_t lzw_decode(size_t limit) {
     if (lzw_valid_key(curr_key)) {
       s = lzw_data[curr_key].data;
     } else {
-      //  fprintf(stderr, "lzw_length: %u, curr_key: %u\n", lzw_length,
-      //  curr_key);
-      ASSERT(lzw_valid_key(curr_key-1));
+      //fprintf(stderr, "lzw_length: %u, curr_key: %u\n", lzw_length, curr_key);
+      ASSERT(lzw_valid_key(curr_key - 1));
     }
     DEBUG_STMT(int b =)
     lzw_next_char(s[0]);
