@@ -1,5 +1,5 @@
-CC=afl-clang-fast
-#CC=clang
+#CC=afl-clang-fast
+CC=clang
 # CFLAGS=-Wall -Werror -g -fsanitize=address,undefined -std=c99 -pedantic
 CFLAGS=-Wall -Werror -g -O3 -flto -fsanitize=address,undefined
 #CFLAGS=-Wall -Werror -g -std=c99 -pedantic -O2

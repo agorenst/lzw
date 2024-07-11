@@ -234,11 +234,12 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
 int main(int argc, char *argv[]) {
   char c;
   bool correctness_roundtrip = false;
+  bool correctness_roundtrip_memory = false;
 
   user_input = stdin;
   user_output = stdout;
 
-  while ((c = getopt(argc, argv, "deg:m:p:r:q:l:v:xcb:i:o:")) != -1) {
+  while ((c = getopt(argc, argv, "deg:m:p:r:q:l:v:xcCb:i:o:")) != -1) {
     switch (c) {
     case 'd':
       do_decode = true;
@@ -271,6 +272,9 @@ int main(int argc, char *argv[]) {
     case 'c': // for "correctness"
       correctness_roundtrip = true;
       break;
+    case 'C': // for "correctness"
+      correctness_roundtrip_memory = true;
+      break;
     case 'i':
       user_input = fopen(optarg, "r");
       assert(user_input);
@@ -284,6 +288,10 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  if (correctness_roundtrip && correctness_roundtrip_memory) {
+    printf("Error, can't do both in-memory and through-file roundtrip (cC)\n");
+    return 2;
+  }
   if (lzw_max_key && lzw_max_key < 256) {
     printf("Error, max key too small (need >= 256, got %u)\n", lzw_max_key);
     return 2;
@@ -309,6 +317,19 @@ int main(int argc, char *argv[]) {
 
   if (correctness_roundtrip) {
     round_trip();
+  } else if (correctness_roundtrip_memory) {
+    char *inputbuffer = NULL;
+    size_t inputbuffer_size = 0;
+    FILE *copy_file = open_memstream(&inputbuffer, &inputbuffer_size);
+    char buffer[1028 * 1028];
+    size_t n = 0;
+    while ((n = fread(buffer, 1, sizeof(buffer), lzw_input_file)) > 0) {
+      fwrite(buffer, 1, n, copy_file);
+    }
+    fclose(lzw_input_file);
+    fclose(copy_file);
+    round_trip_in_memory(inputbuffer, inputbuffer_size);
+    free(inputbuffer);
   } else {
     if (do_encode == do_decode) {
       printf("Error, must uniquely choose encode or decode\n");

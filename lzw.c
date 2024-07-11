@@ -239,17 +239,24 @@ size_t lzw_encode(size_t l) {
       break;
     }
     lzw_bytes_read++;
-    bool new_string = lzw_next_char(c);
-    if (new_string) {
+    switch (lzw_next_char(c)) {
+    case NEXT_CHAR_CONTINUE:
+      emitted = false;
+      break;
+    case NEXT_CHAR_MAX:
       emitted = true;
-      // Flush the current string
       emit(curr->key, lzw_length);
       curr = root;
       update_length();
-      // Now actually start with c
       lzw_next_char(c);
-    } else {
-      emitted = false;
+      break;
+    case NEXT_CHAR_NEW:
+      emitted = true;
+      emit(curr->key, lzw_length);
+      curr = root;
+      update_length();
+      lzw_next_char(c);
+      break;
     }
   }
   return i;
@@ -298,6 +305,7 @@ bool readbits(uint32_t *v) {
     bitread_buffer_push_byte(c);
   }
   *v = bitread_buffer_pop_bits(lzw_length);
+  DEBUG(3, "readbits=%#x\n", *v);
   return true;
 }
 
@@ -321,9 +329,9 @@ size_t lzw_decode(size_t limit) {
     ASSERT(l);
     for (uint32_t i = 0; i < l; ++i) {
       lzw_emitter(s[i]);
-      DEBUG_STMT(bool b =)
+      DEBUG_STMT(int b =)
       lzw_next_char(s[i]);
-      ASSERT(!b);
+      ASSERT(b != NEXT_CHAR_NEW);
     }
     lzw_bytes_written += l;
     read += l;
@@ -356,9 +364,9 @@ size_t lzw_decode(size_t limit) {
       //  curr_key);
       ASSERT(lzw_valid_key(curr_key-1));
     }
-    DEBUG_STMT(bool b =)
+    DEBUG_STMT(int b =)
     lzw_next_char(s[0]);
-    ASSERT(b);
+    ASSERT(b != NEXT_CHAR_CONTINUE);
     curr = root;
   }
   return read;
