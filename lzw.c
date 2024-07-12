@@ -180,11 +180,12 @@ uint8_t bitwrite_buffer_pop_byte(void) {
 // Reading v from "left to right", we
 // emit the l bits of v.
 void emit(uint32_t v, uint8_t l) {
-  DEBUG(3, "emit, inloop: l=%d, bitwriter_buffer_size=%d\n", l,
+  DEBUG(3, "emit %d, inloop: l=%d, bitwriter_buffer_size=%d\n", v, l,
         bitwrite_buffer_size);
   bitwrite_buffer_push_bits(v, l);
   while (bitwrite_buffer_size >= 8) {
     char c = bitwrite_buffer_pop_byte();
+    DEBUG(3, "emit:lzw_emitter(%#x)\n", c);
     lzw_emitter(c);
     lzw_bytes_written++;
   }
@@ -214,8 +215,6 @@ void lzw_init() {
   ASSERT(lzw_clear_code == lzw_next_key);
   lzw_next_key++; // reserve 256 for the clear-code.
   update_length();
-  lzw_bytes_read = 0;
-  lzw_bytes_written = 0;
 
   bitread_buffer = 0;
   bitread_buffer_size = 0;
@@ -234,6 +233,7 @@ size_t lzw_encode(size_t l) {
     int c = lzw_reader();
     DEBUG(3, "lzw_encode:lzw_reader()=%#x\n", c);
     if (c == EOF) {
+      DEBUG(3, "  lzw_encode:eof case\n");
       lzw_encode_end();
       break;
     }
@@ -262,25 +262,36 @@ size_t lzw_encode(size_t l) {
 }
 
 void lzw_emit_clear_code(void) {
+  fprintf(stderr, "Emitting clear code after %zu bytes\n", lzw_bytes_written);
+  if (curr != root) {
+    DEBUG(3, "lzw_encode_end: curr!=root case\n");
+    emit(curr->key, lzw_length);
+    curr = root;
+  }
   emit(lzw_clear_code, lzw_length);
   lzw_encode_end();
-  lzw_destroy_state();
-  lzw_init();
 }
 
 void lzw_encode_end(void) {
-  DEBUG(3, "lzw_encode_end: curr!=root=%s, bitwrite_buffer_size!=0=%s\n",
-        curr != root ? "true" : "false",
-        bitwrite_buffer_size != 0 ? "true" : "false");
+  DEBUG(3, "lzw_encode_end\n");
   if (curr != root) {
+    DEBUG(3, "lzw_encode_end: curr!=root case\n");
     emit(curr->key, lzw_length);
     curr = root;
   }
   if (bitwrite_buffer_size != 0) {
+    DEBUG(3, "lzw_encode_end: bitwrite_buffer_size != 0 case\n");
     // cap off our buffer
-    emit(0, 8 - (bitwrite_buffer_size % 8));
+    uint8_t bits_to_add = 8 - (bitwrite_buffer_size % 8);
+    //while (bitwrite_buffer_size + bits_to_add < lzw_length) {
+      //bits_to_add += 8;
+    //}
+    //fprintf(stderr, "lzw_length=%u\tbitwrite_buffer_size=%u\tfinal amendment=%u\tbits_to_add=%u\n", lzw_length, bitwrite_buffer_size, 8 - (bitwrite_buffer_size % 8), bits_to_add);
+    //bits_to_add += 8 * lzw_length/(bitwriter_buffer_size+bits_to_add);
+    emit(0, bits_to_add);
     ASSERT(bitwrite_buffer_size == 0);
   }
+  DEBUG(3, "lzw_encode_end:done\n");
 }
 
 void bitread_buffer_push_byte(uint8_t c) {
@@ -326,11 +337,12 @@ size_t lzw_decode(size_t limit) {
   while (read < limit && readbits(&curr_key)) {
     DEBUG(2, "key %X of %u bits\n", curr_key, lzw_length);
     if (curr_key == lzw_clear_code) {
-      assert(false);
-      lzw_destroy_state();
+      lzw_destroy_state(); // this asserts our bitread buffer is in a good place too.
+      fprintf(stderr, "DESTROYING\n");
       lzw_init();
-      continue;
+      continue; // I guess we just go? Curious: read can exceed the lzw_bytes_read, when we hit this "near the end" of our iteration.
     }
+      //fprintf(stderr, "decoding\n");
     ASSERT(lzw_valid_key(curr_key));
 
     // emit that string:
@@ -380,10 +392,4 @@ size_t lzw_decode(size_t limit) {
     curr = root;
   }
   return read;
-}
-
-void lzw_debug_emit_state(FILE* out) {
-  // emit the table
-  // emit the buffers
-  // 
 }

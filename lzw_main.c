@@ -71,8 +71,18 @@ int copy_lzw_reader(void) {
   return c;
 }
 
-// process_stream consumes all the globally-set parameters
-void process_stream() {
+void decode_stream() {
+  total_stream_read = 0;
+  total_stream_written = 0;
+  lzw_init();
+  // Decode is guaranteed to make progress (even in presence of clear-codes)
+  while (lzw_decode(page_size));
+  total_stream_read += lzw_bytes_read;
+  total_stream_written += lzw_bytes_written;
+  lzw_destroy_state();
+}
+
+void encode_stream() {
   total_stream_read = 0;
   total_stream_written = 0;
   FILE *ratio_log_file = stderr;
@@ -91,12 +101,7 @@ void process_stream() {
 
     for (int page_count = 0;; page_count++) {
       // fprintf(stderr, "processing page: %d\n", page_count);
-      size_t bytes_processed = 0;
-      if (do_encode) {
-        bytes_processed = lzw_encode(page_size);
-      } else {
-        bytes_processed = lzw_decode(page_size);
-      }
+      size_t bytes_processed = lzw_encode(page_size);
       // We've hit EOF.
       if (!bytes_processed) {
         total_stream_read += lzw_bytes_read;
@@ -130,24 +135,24 @@ void process_stream() {
       page_count >= 64 &&
           (ema_slow * 1.5 < ema_fast || compression_ratio > 0.8)) {
         fprintf(ratio_log_file, "resetting %d\n", page_count);
-        trim_input = true;
-        // Force a flush, basically.
-        if (do_encode) {
-          // assert(lzw_encode(page_size));
-          while (lzw_encode(page_size))
-            ;
-        } else {
-          // assert(lzw_decode(page_size));
-          while (lzw_decode(page_size))
-            ;
+        if (!feof(lzw_input_file)) { // the issue (???) is that we're sort of closing the stream twice.
+          lzw_emit_clear_code();
         }
-        trim_input = false;
         break;
       }
     }
     total_stream_read += lzw_bytes_read;
     total_stream_written += lzw_bytes_written;
     lzw_destroy_state();
+  }
+}
+
+// process_stream consumes all the globally-set parameters
+void process_stream() {
+  if (do_decode) {
+    decode_stream();
+  } else {
+    encode_stream();
   }
 }
 
@@ -187,12 +192,23 @@ void round_trip() {
   fclose(intermediate);
 }
 
+void dumpbytes(const char *d, size_t c) {
+  for (size_t i = 0; i < c; i++) {
+    if (i > 0 && i % 20 == 0) {
+      fprintf(stderr, "\n");
+    }
+    fprintf(stderr, "%02x ", (unsigned char)d[i]);
+  }
+      fprintf(stderr, "\n");
+}
+
 void round_trip_in_memory(const char* Data, size_t Size) {
   char *encodechunks = NULL;
   size_t encodechunks_size = 0;
   init_streams((char*)Data, Size, &encodechunks, &encodechunks_size);
   do_encode = true;
   do_decode = false;
+  //fprintf(stderr, "ENCODING\n");
   process_stream();
   close_streams();
   assert(total_stream_read == Size);
@@ -204,9 +220,15 @@ void round_trip_in_memory(const char* Data, size_t Size) {
                &decodechunks_size);
   do_encode = false;
   do_decode = true;
+  //fprintf(stderr, "DECODING\n");
   process_stream();
   close_streams();
   assert(total_stream_read == encodechunks_size);
+  //fprintf(stderr, "encodechunks_size=%zu\n",encodechunks_size);
+  //fprintf(stderr, "decodechunks_size=%zu\ttotal_stream_written=%zu\tSize=%zu\n",decodechunks_size, total_stream_written, Size);
+  //dumpbytes(Data, Size);
+  //dumpbytes(encodechunks, encodechunks_size);
+  //dumpbytes(decodechunks, decodechunks_size);
   assert(total_stream_written == Size);
 
   assert(Size == decodechunks_size);
@@ -223,7 +245,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
   }
   page_size=7;
   lzw_max_key=512;
-  do_ratio = false;
+  do_ratio = true;
   if (do_ratio) {
     lzw_reader = ratio_based_reader;
   }

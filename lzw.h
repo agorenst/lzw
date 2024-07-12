@@ -7,6 +7,7 @@ void lzw_encode_end(void);
 size_t lzw_decode(size_t);
 void lzw_init(void);
 void lzw_destroy_state(void);
+void lzw_emit_clear_code(void);
 
 typedef void (*lzw_emitter_t)(char);
 typedef int (*lzw_reader_t)(void);
