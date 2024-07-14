@@ -122,7 +122,7 @@ enum {
   NEXT_CHAR_MAX = 1,
   NEXT_CHAR_NEW = 2
 };
-const uint32_t  lzw_clear_code = 256;
+const uint32_t lzw_clear_code = 256;
 // The primary action of this table is to ingest
 // the next byte, and maintain the correct encoding
 // information for the implicit string seen-so-far.
@@ -158,6 +158,7 @@ int lzw_next_char(uint8_t c) {
 // We also have book-keeping of when we have to
 // update the length
 void lzw_len_update() {
+  DTRACE(DB_STATE, "INCLENGTH %d->%d\n", lzw_length, lzw_length+1)
   lzw_length++;
   lzw_data_t *new_data = calloc(1 << lzw_length, sizeof(lzw_data_t));
   memcpy(new_data, lzw_data, sizeof(lzw_data_t) * (1 << (lzw_length - 1)));
@@ -201,6 +202,9 @@ void lzw_destroy_state(void) {
     lzw_data = NULL;
   }
   lzw_next_key = 0;
+  if ((bitread_buffer & ((1 << bitread_buffer_size)-1)) != 0) {
+    fprintf(stderr, "BAD BITREAD BUFFER: %d %s\n", bitread_buffer_size, key_as_bits(bitread_buffer, bitread_buffer_size));
+  }
   ASSERT((bitread_buffer & ((1 << bitread_buffer_size)-1)) == 0);
 }
 
@@ -286,7 +290,7 @@ size_t lzw_encode(size_t l) {
       lzw_encode_end();
       break;
     }
-    DTRACE(DB_BYTE_STREAM, "READBYTE(encode):\t%#x\n", c);
+    DTRACE(DB_BYTE_STREAM, "READBYTE(encode):\t%#x\t%s\n", c, key_as_bits(c, 8));
     lzw_bytes_read++;
     switch (lzw_next_char(c)) {
     case NEXT_CHAR_CONTINUE:
@@ -313,6 +317,10 @@ void lzw_emit_clear_code(void) {
            lzw_bytes_written, curr != root ? "true" : "false");
     emit(curr->key, lzw_length);
     curr = root;
+    // When we read in a code, we always assume
+    if (key_requires_bigger_length(lzw_next_key + 1)) {
+      lzw_len_update();
+    }
   }
     DTRACE(DB_STATE,
            "lzw_emit_clear_code: doing the thing\n")
@@ -326,7 +334,7 @@ void lzw_encode_end(void) {
   stream_ended = true;
   // if we haven't done anything yet, make that more explicit
   if (bitwrite_buffer_size == 0 && lzw_bytes_written ==0 && curr == root) {
-  DTRACE(DB_STATE, "redundant call");
+  DTRACE(DB_STATE, "redundant call\n");
     //assert(false);
     return;
   }
@@ -434,6 +442,7 @@ size_t lzw_decode(size_t limit) {
     }
     DTRACE(DB_STATE, "DECODE(continue)\n");
     bitread_buffer_size += lzw_length;
+
 
     // Find the next character.
     // If the next key is valid, that means
