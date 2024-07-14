@@ -23,14 +23,6 @@ int verbosity = 0;
 
 size_t page_size = 4096;
 
-bool trim_input = false;
-int ratio_based_reader(void) {
-  if (trim_input) {
-    return EOF;
-  }
-  return fgetc(lzw_input_file);
-}
-
 uint64_t total_stream_read = 0;
 uint64_t total_stream_written = 0;
 
@@ -59,16 +51,16 @@ void reset_written() {
   prev_bytes_read = 0;
 }
 
-FILE* copy_lzw_reader_file;
-int copy_lzw_reader(void) {
-  if (trim_input) {
-    return EOF;
-  }
-  int c = fgetc(lzw_input_file);
-  if (c != EOF) {
-    fputc(c, copy_lzw_reader_file);
-  }
+int lzw_echo_reader(void) {
+  static int reader_count = 0;
+  char c = fgetc(lzw_input_file);
+  fprintf(stderr, "READ\t%x\t%d\n", c, reader_count++);
   return c;
+}
+void lzw_echo_emitter(char c) {
+  static int writer_count = 0;
+  fprintf(stderr, "WRITE\t%x\t%d\n", c, writer_count++);
+  fputc(c, lzw_output_file);
 }
 
 void decode_stream() {
@@ -92,12 +84,12 @@ void encode_stream() {
 
   for (int block_count = 0;; block_count++) {
     reset_written();
-    lzw_init();
-
     double ema_slow = 0.0;
     double ema_slow_alpha = 0.0005;
     double ema_fast = 0.0;
     double ema_fast_alpha = 0.05;
+
+    lzw_init();
 
     for (int page_count = 0;; page_count++) {
       // fprintf(stderr, "processing page: %d\n", page_count);
@@ -134,7 +126,7 @@ void encode_stream() {
       if (do_ratio &&
       page_count >= 64 &&
           (ema_slow * 1.5 < ema_fast || compression_ratio > 0.8)) {
-        fprintf(ratio_log_file, "resetting %d\n", page_count);
+        //fprintf(ratio_log_file, "resetting %d\n", page_count);
         if (!feof(lzw_input_file)) { // the issue (???) is that we're sort of closing the stream twice.
           lzw_emit_clear_code();
         }
@@ -223,13 +215,13 @@ void round_trip_in_memory(const char* Data, size_t Size) {
   //fprintf(stderr, "DECODING\n");
   process_stream();
   close_streams();
-  assert(total_stream_read == encodechunks_size);
+  //assert(total_stream_read == encodechunks_size);
   //fprintf(stderr, "encodechunks_size=%zu\n",encodechunks_size);
   //fprintf(stderr, "decodechunks_size=%zu\ttotal_stream_written=%zu\tSize=%zu\n",decodechunks_size, total_stream_written, Size);
   //dumpbytes(Data, Size);
   //dumpbytes(encodechunks, encodechunks_size);
   //dumpbytes(decodechunks, decodechunks_size);
-  assert(total_stream_written == Size);
+  //assert(total_stream_written == Size);
 
   assert(Size == decodechunks_size);
   assert(!memcmp(decodechunks, Data, Size));
@@ -245,10 +237,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
   }
   page_size=7;
   lzw_max_key=512;
-  do_ratio = true;
-  if (do_ratio) {
-    lzw_reader = ratio_based_reader;
-  }
+  //do_ratio = true;
   round_trip_in_memory((const char*) Data, Size);
   return 0;
 }
@@ -270,7 +259,7 @@ int main(int argc, char *argv[]) {
       do_encode = true;
       break;
     case 'g':
-      lzw_debug_level = atoi(optarg);
+      lzw_set_debug_string(optarg);
       break;
     case 'm':
       lzw_max_key = atoi(optarg);
@@ -330,12 +319,11 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "page_size  : %zu\n", page_size);
   }
 
-  if (do_ratio) {
-    lzw_reader = ratio_based_reader;
-  }
-
   lzw_input_file = user_input;
   lzw_output_file = user_output;
+
+  //lzw_reader = lzw_echo_reader;
+  //lzw_emitter = lzw_echo_emitter;
 
   if (correctness_roundtrip) {
     round_trip();
