@@ -46,14 +46,10 @@ const uint32_t BITWRITE_BUFFER_MAX_SIZE = sizeof(bitwrite_buffer) * 8;
 // We encode the output as a sequence of bits, which can cause
 // complications if we need to say, emit, 13 bits.
 // We store things 8 bits at a time, to match fputc.
-void lzw_default_emitter(char b) {
-  fputc(b, lzw_output_file);
-}
+void lzw_default_emitter(char b) { fputc(b, lzw_output_file); }
 lzw_emitter_t lzw_emitter = lzw_default_emitter;
 
-int lzw_default_reader(void) {
-  return fgetc(lzw_input_file);
-}
+int lzw_default_reader(void) { return fgetc(lzw_input_file); }
 lzw_reader_t lzw_reader = lzw_default_reader;
 
 // Before we get too much into executable code,
@@ -79,11 +75,11 @@ int DB_KEYS_SET[DB_MAX_KEY] = {};
 #define DEBUG_STMT(x) x
 #endif
 
-void lzw_set_debug_string(const char* s) {
-  #ifdef NDEBUG
-  #else
+void lzw_set_debug_string(const char *s) {
+#ifdef NDEBUG
+#else
   for (int i = 0; i < strlen(s); i++) {
-    switch(s[i]) {
+    switch (s[i]) {
     case 's':
       DB_KEYS_SET[DB_STATE] = 1;
       break;
@@ -95,33 +91,28 @@ void lzw_set_debug_string(const char* s) {
       break;
     }
   }
-  #endif
+#endif
 }
 
 // For debug purposes
-static const char* key_as_bits(uint32_t v, uint8_t l) {
-  //ASSERT((v & ((1 << l) - 1)) == v); // v doesn't have extra bits
-  static char format[(1 << 8*sizeof(uint8_t))+1];
+static const char *key_as_bits(uint32_t v, uint8_t l) {
+  // ASSERT((v & ((1 << l) - 1)) == v); // v doesn't have extra bits
+  static char format[(1 << 8 * sizeof(uint8_t)) + 1];
   // Emit bits backwards
   for (int i = 0; i < l; i++) {
     format[i] = v % 2 ? '1' : '0';
     v >>= 1;
   }
-  for (int i = 0; i < l/2; i++) {
+  for (int i = 0; i < l / 2; i++) {
     char t = format[i];
-    format[i] = format[l-(i+1)];
-    format[l-(i+1)] = t;
+    format[i] = format[l - (i + 1)];
+    format[l - (i + 1)] = t;
   }
   format[l] = '\0';
   return format;
 }
 
-
-enum {
-  NEXT_CHAR_CONTINUE = 0,
-  NEXT_CHAR_MAX = 1,
-  NEXT_CHAR_NEW = 2
-};
+enum { NEXT_CHAR_CONTINUE = 0, NEXT_CHAR_MAX = 1, NEXT_CHAR_NEW = 2 };
 const uint32_t lzw_clear_code = 256;
 // The primary action of this table is to ingest
 // the next byte, and maintain the correct encoding
@@ -129,7 +120,8 @@ const uint32_t lzw_clear_code = 256;
 // That's captured in this function:
 int lzw_next_char(uint8_t c) {
   if (curr->children[c]) {
-    DTRACE(DB_STATE, "APPEND(%#x)\t\tSTATE %u -> %u\n", c, curr->key, curr->children[c]->key);
+    DTRACE(DB_STATE, "APPEND(%#x)\t\tSTATE %u -> %u\n", c, curr->key,
+           curr->children[c]->key);
     curr = curr->children[c];
     return NEXT_CHAR_CONTINUE;
   }
@@ -158,7 +150,7 @@ int lzw_next_char(uint8_t c) {
 // We also have book-keeping of when we have to
 // update the length
 void lzw_len_update() {
-  DTRACE(DB_STATE, "INCLENGTH %d->%d\n", lzw_length, lzw_length+1)
+  DTRACE(DB_STATE, "INCLENGTH %d->%d\n", lzw_length, lzw_length + 1)
   lzw_length++;
   lzw_data_t *new_data = calloc(1 << lzw_length, sizeof(lzw_data_t));
   memcpy(new_data, lzw_data, sizeof(lzw_data_t) * (1 << (lzw_length - 1)));
@@ -181,7 +173,9 @@ uint32_t bitread_buffer_pop_bits(uint32_t bitcount);
 
 void debug_bitread_buffer() {
   for (int i = 0; i < BITREAD_BUFFER_MAX_SIZE; i++) {
-    fprintf(stderr, "%c", (bitread_buffer >> (BITREAD_BUFFER_MAX_SIZE - (i+1))) == 1 ? '1' : '0');
+    fprintf(stderr, "%c",
+            (bitread_buffer >> (BITREAD_BUFFER_MAX_SIZE - (i + 1))) == 1 ? '1'
+                                                                         : '0');
     if (i == bitread_buffer_size) {
       fprintf(stderr, "|");
     }
@@ -202,10 +196,11 @@ void lzw_destroy_state(void) {
     lzw_data = NULL;
   }
   lzw_next_key = 0;
-  if ((bitread_buffer & ((1 << bitread_buffer_size)-1)) != 0) {
-    fprintf(stderr, "BAD BITREAD BUFFER: %d %s\n", bitread_buffer_size, key_as_bits(bitread_buffer, bitread_buffer_size));
+  if ((bitread_buffer & ((1 << bitread_buffer_size) - 1)) != 0) {
+    fprintf(stderr, "BAD BITREAD BUFFER: %d %s\n", bitread_buffer_size,
+            key_as_bits(bitread_buffer, bitread_buffer_size));
   }
-  ASSERT((bitread_buffer & ((1 << bitread_buffer_size)-1)) == 0);
+  ASSERT((bitread_buffer & ((1 << bitread_buffer_size) - 1)) == 0);
 }
 
 void bitwrite_buffer_push_bits(uint32_t v, uint8_t l) {
@@ -222,7 +217,6 @@ uint8_t bitwrite_buffer_pop_byte(void) {
   return b;
 }
 
-
 // Reading v from "left to right", we
 // emit the l bits of v.
 void emit(uint32_t v, uint8_t l) {
@@ -231,7 +225,8 @@ void emit(uint32_t v, uint8_t l) {
   bitwrite_buffer_push_bits(v, l);
   while (bitwrite_buffer_size >= 8) {
     uint8_t c = bitwrite_buffer_pop_byte();
-    DTRACE(DB_BYTE_STREAM, "EMITBYTE(encode):\t%#x\t%s\n", c, key_as_bits(c, 8));
+    DTRACE(DB_BYTE_STREAM, "EMITBYTE(encode):\t%#x\t%s\n", c,
+           key_as_bits(c, 8));
     lzw_emitter(c);
     lzw_bytes_written++;
   }
@@ -264,7 +259,8 @@ void lzw_init() {
   }
   DB_KEYS_SET[DB_STATE] = old_key;
 
-  //fprintf(stderr, "lzw_next_key=%u\tlzw_clear_code=%zu\n", lzw_next_key, lzw_clear_code);
+  // fprintf(stderr, "lzw_next_key=%u\tlzw_clear_code=%zu\n", lzw_next_key,
+  // lzw_clear_code);
   ASSERT(lzw_clear_code == lzw_next_key);
   lzw_next_key++; // reserve 256 for the clear-code.
   update_length();
@@ -290,7 +286,8 @@ size_t lzw_encode(size_t l) {
       lzw_encode_end();
       break;
     }
-    DTRACE(DB_BYTE_STREAM, "READBYTE(encode):\t%#x\t%s\n", c, key_as_bits(c, 8));
+    DTRACE(DB_BYTE_STREAM, "READBYTE(encode):\t%#x\t%s\n", c,
+           key_as_bits(c, 8));
     lzw_bytes_read++;
     switch (lzw_next_char(c)) {
     case NEXT_CHAR_CONTINUE:
@@ -322,20 +319,18 @@ void lzw_emit_clear_code(void) {
       lzw_len_update();
     }
   }
-    DTRACE(DB_STATE,
-           "lzw_emit_clear_code: doing the thing\n")
+  DTRACE(DB_STATE, "lzw_emit_clear_code: doing the thing\n")
   emit(lzw_clear_code, lzw_length);
-    DTRACE(DB_STATE,
-           "lzw_emit_clear_code: done doing the thing\n")
+  DTRACE(DB_STATE, "lzw_emit_clear_code: done doing the thing\n")
   lzw_encode_end();
 }
 
 void lzw_encode_end(void) {
   stream_ended = true;
   // if we haven't done anything yet, make that more explicit
-  if (bitwrite_buffer_size == 0 && lzw_bytes_written ==0 && curr == root) {
-  DTRACE(DB_STATE, "redundant call\n");
-    //assert(false);
+  if (bitwrite_buffer_size == 0 && lzw_bytes_written == 0 && curr == root) {
+    DTRACE(DB_STATE, "redundant call\n");
+    // assert(false);
     return;
   }
   DTRACE(DB_STATE, "lzw_encode_end\n");
@@ -345,7 +340,8 @@ void lzw_encode_end(void) {
     curr = root;
   }
   if (bitwrite_buffer_size != 0) {
-    DTRACE(DB_STATE, "lzw_encode_end: bitwrite_buffer_size=%d\n", bitwrite_buffer_size);
+    DTRACE(DB_STATE, "lzw_encode_end: bitwrite_buffer_size=%d\n",
+           bitwrite_buffer_size);
     // We want to finish emitting our last key.
     // cap off our buffer: there are (say) 3 valid bits left,
     // we just need to pad it so we can emit those 3 bits as part
@@ -365,13 +361,15 @@ void bitread_buffer_push_byte(uint8_t c) {
 }
 uint32_t bitread_buffer_pop_bits(uint32_t bitcount) {
   ASSERT(bitread_buffer_size >= bitcount);
-  //fprintf(stderr, "BITREAD_BUFFER_POP: %s\n", key_as_bits(bitread_buffer, bitread_buffer_size));
+  // fprintf(stderr, "BITREAD_BUFFER_POP: %s\n", key_as_bits(bitread_buffer,
+  // bitread_buffer_size));
   uint64_t bitread_buffer_copy = bitread_buffer;
   // slide down the "oldest" bits
   bitread_buffer_copy >>= (bitread_buffer_size - bitcount);
   bitread_buffer_copy &= (1 << bitcount) - 1;
   bitread_buffer_size -= bitcount;
-  //fprintf(stderr, "BITREAD_BUFFER_DONE: %lu %s\n", bitread_buffer_copy, key_as_bits(bitread_buffer, bitread_buffer_size));
+  // fprintf(stderr, "BITREAD_BUFFER_DONE: %lu %s\n", bitread_buffer_copy,
+  // key_as_bits(bitread_buffer, bitread_buffer_size));
   return bitread_buffer_copy;
 }
 
@@ -383,7 +381,8 @@ bool readbits(uint32_t *v) {
       DTRACE(DB_BYTE_STREAM, "READBYTE(decode):\t%d\n", c);
       return false;
     }
-    DTRACE(DB_BYTE_STREAM, "READBYTE(decode):\t%#x\t%s\n", c, key_as_bits(c, 8));
+    DTRACE(DB_BYTE_STREAM, "READBYTE(decode):\t%#x\t%s\n", c,
+           key_as_bits(c, 8));
     lzw_bytes_read++;
     bitread_buffer_push_byte(c);
   }
@@ -393,19 +392,24 @@ bool readbits(uint32_t *v) {
 
 bool lzw_valid_key(uint32_t k) {
   ASSERT(k < (1 << (lzw_length)));
-  return lzw_data[k].data != NULL; // this excludes the clear-code, for instance.
+  return lzw_data[k].data !=
+         NULL; // this excludes the clear-code, for instance.
 }
 
 size_t lzw_decode(size_t limit) {
   uint32_t curr_key;
   size_t read = 0;
   while (read < limit && readbits(&curr_key)) {
-    DTRACE(DB_KEY_STREAM, "READKEY(%d):\t\t%d\t%s\n", lzw_length, curr_key, key_as_bits(curr_key, lzw_length));
+    DTRACE(DB_KEY_STREAM, "READKEY(%d):\t\t%d\t%s\n", lzw_length, curr_key,
+           key_as_bits(curr_key, lzw_length));
     if (curr_key == lzw_clear_code) {
       DTRACE(DB_STATE, "lzw_decode:hit clear code\n");
-      lzw_destroy_state(); // this asserts our bitread buffer is in a good place too.
+      lzw_destroy_state(); // this asserts our bitread buffer is in a good place
+                           // too.
       lzw_init();
-      continue; // I guess we just go? Curious: read can exceed the lzw_bytes_read, when we hit this "near the end" of our iteration.
+      continue; // I guess we just go? Curious: read can exceed the
+                // lzw_bytes_read, when we hit this "near the end" of our
+                // iteration.
     }
     ASSERT(lzw_valid_key(curr_key));
 
@@ -443,7 +447,6 @@ size_t lzw_decode(size_t limit) {
     DTRACE(DB_STATE, "DECODE(continue)\n");
     bitread_buffer_size += lzw_length;
 
-
     // Find the next character.
     // If the next key is valid, that means
     // the next key is already something we've seen,
@@ -455,10 +458,11 @@ size_t lzw_decode(size_t limit) {
     if (lzw_valid_key(curr_key)) {
       s = lzw_data[curr_key].data;
     } else {
-      if(! (curr_key-1 == lzw_clear_code || lzw_valid_key(curr_key - 1))) {
+      if (!(curr_key - 1 == lzw_clear_code || lzw_valid_key(curr_key - 1))) {
         fprintf(stderr, "%u %u %u\n", curr_key, lzw_clear_code, lzw_max_key);
       }
-      ASSERT(curr_key-1 == lzw_clear_code || lzw_valid_key(curr_key - 1) || curr_key == lzw_max_key); // last condition is a hack, hold on.
+      ASSERT(curr_key - 1 == lzw_clear_code || lzw_valid_key(curr_key - 1) ||
+             curr_key == lzw_max_key); // last condition is a hack, hold on.
     }
     DEBUG_STMT(int b =)
     lzw_next_char(s[0]);

@@ -16,8 +16,8 @@ bool do_ratio = false;
 bool trace_ratio = false;
 char *ratio_log_filename = NULL;
 
-FILE* user_input;
-FILE* user_output;
+FILE *user_input;
+FILE *user_output;
 
 int verbosity = 0;
 
@@ -68,7 +68,8 @@ void decode_stream() {
   total_stream_written = 0;
   lzw_init();
   // Decode is guaranteed to make progress (even in presence of clear-codes)
-  while (lzw_decode(page_size));
+  while (lzw_decode(page_size))
+    ;
   total_stream_read += lzw_bytes_read;
   total_stream_written += lzw_bytes_written;
   lzw_destroy_state();
@@ -123,11 +124,11 @@ void encode_stream() {
       }
 
       // Now consume our ratio information: should we start a new block?
-      if (do_ratio &&
-      page_count >= 64 &&
+      if (do_ratio && page_count >= 64 &&
           (ema_slow * 1.5 < ema_fast || compression_ratio > 0.8)) {
-        //fprintf(ratio_log_file, "resetting %d\n", page_count);
-        if (!feof(lzw_input_file)) { // the issue (???) is that we're sort of closing the stream twice.
+        // fprintf(ratio_log_file, "resetting %d\n", page_count);
+        if (!feof(lzw_input_file)) { // the issue (???) is that we're sort of
+                                     // closing the stream twice.
           lzw_emit_clear_code();
         }
         break;
@@ -167,7 +168,7 @@ void round_trip() {
   assert(user_output);
   do_encode = true;
   do_decode = false;
-  FILE* intermediate = tmpfile();
+  FILE *intermediate = tmpfile();
   lzw_output_file = intermediate;
   fprintf(stderr, "Encoding stream\n");
   process_stream();
@@ -191,16 +192,16 @@ void dumpbytes(const char *d, size_t c) {
     }
     fprintf(stderr, "%02x ", (unsigned char)d[i]);
   }
-      fprintf(stderr, "\n");
+  fprintf(stderr, "\n");
 }
 
-void round_trip_in_memory(const char* Data, size_t Size) {
+void round_trip_in_memory(const char *Data, size_t Size) {
   char *encodechunks = NULL;
   size_t encodechunks_size = 0;
-  init_streams((char*)Data, Size, &encodechunks, &encodechunks_size);
+  init_streams((char *)Data, Size, &encodechunks, &encodechunks_size);
   do_encode = true;
   do_decode = false;
-  //fprintf(stderr, "ENCODING\n");
+  // fprintf(stderr, "ENCODING\n");
   process_stream();
   close_streams();
   assert(total_stream_read == Size);
@@ -212,16 +213,16 @@ void round_trip_in_memory(const char* Data, size_t Size) {
                &decodechunks_size);
   do_encode = false;
   do_decode = true;
-  //fprintf(stderr, "DECODING\n");
+  // fprintf(stderr, "DECODING\n");
   process_stream();
   close_streams();
-  //assert(total_stream_read == encodechunks_size);
-  //fprintf(stderr, "encodechunks_size=%zu\n",encodechunks_size);
-  //fprintf(stderr, "decodechunks_size=%zu\ttotal_stream_written=%zu\tSize=%zu\n",decodechunks_size, total_stream_written, Size);
-  //dumpbytes(Data, Size);
-  //dumpbytes(encodechunks, encodechunks_size);
-  //dumpbytes(decodechunks, decodechunks_size);
-  //assert(total_stream_written == Size);
+  // assert(total_stream_read == encodechunks_size);
+  // fprintf(stderr, "encodechunks_size=%zu\n",encodechunks_size);
+  // fprintf(stderr,
+  // "decodechunks_size=%zu\ttotal_stream_written=%zu\tSize=%zu\n",decodechunks_size,
+  // total_stream_written, Size); dumpbytes(Data, Size); dumpbytes(encodechunks,
+  // encodechunks_size); dumpbytes(decodechunks, decodechunks_size);
+  // assert(total_stream_written == Size);
 
   assert(Size == decodechunks_size);
   assert(!memcmp(decodechunks, Data, Size));
@@ -235,10 +236,10 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
   if (Size == 0) {
     return 0;
   }
-  page_size=7;
-  lzw_max_key=512;
+  page_size = 7;
+  lzw_max_key = 512;
   do_ratio = true;
-  round_trip_in_memory((const char*) Data, Size);
+  round_trip_in_memory((const char *)Data, Size);
   return 0;
 }
 #else
@@ -309,9 +310,9 @@ int main(int argc, char *argv[]) {
   }
 
   if (trace_ratio && !do_ratio) {
-    fprintf(stderr, "Warning, do_ratio=%s, trace_ratio=%s, unexpected behavior\n",
-    do_ratio ? "true" : "false",
-    trace_ratio ? "true" : "false");
+    fprintf(stderr,
+            "Warning, do_ratio=%s, trace_ratio=%s, unexpected behavior\n",
+            do_ratio ? "true" : "false", trace_ratio ? "true" : "false");
   }
 
   if (verbosity) {
@@ -322,8 +323,8 @@ int main(int argc, char *argv[]) {
   lzw_input_file = user_input;
   lzw_output_file = user_output;
 
-  //lzw_reader = lzw_echo_reader;
-  //lzw_emitter = lzw_echo_emitter;
+  // lzw_reader = lzw_echo_reader;
+  // lzw_emitter = lzw_echo_emitter;
 
   if (correctness_roundtrip) {
     round_trip();

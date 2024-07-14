@@ -1,3 +1,4 @@
+#include "lzw.h"
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -5,8 +6,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include "lzw.h"
-
 
 // This is a shared correctness routine/helper
 void init_streams(char *inbuffer, size_t insize, char **outbuffer,
@@ -31,10 +30,10 @@ void dumpbytes(const char *d, size_t c) {
     }
     fprintf(stderr, "%02x ", (unsigned char)d[i]);
   }
-      fprintf(stderr, "\n");
+  fprintf(stderr, "\n");
 }
 
-char* Data;
+char *Data;
 size_t Size;
 
 const int page_size = 1;
@@ -63,15 +62,15 @@ void do_decode_stream() {
   total_stream_written = 0;
   lzw_init();
   // Decode is guaranteed to make progress (even in presence of clear-codes)
-  while (lzw_decode(page_size));
+  while (lzw_decode(page_size))
+    ;
   total_stream_read += lzw_bytes_read;
   total_stream_written += lzw_bytes_written;
   close_streams();
   lzw_destroy_state();
 }
 
-
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
   assert(argc == 2);
   // these are globals
   Data = strdup(argv[1]);
@@ -83,12 +82,15 @@ int main(int argc, char* argv[]) {
   char *encodechunks = NULL;
   size_t encodechunks_size = 0;
 
-  init_streams((char*)Data, Size, &encodechunks, &encodechunks_size);
+  init_streams((char *)Data, Size, &encodechunks, &encodechunks_size);
   do_encode_stream();
   dumpbytes(encodechunks, encodechunks_size);
-  if (total_stream_read != Size) { fprintf(stderr, "total_stream_read=%lu\tSize=%zu\n", total_stream_read, Size); }
-  //assert(total_stream_read == Size);
-  //assert(total_stream_written == encodechunks_size);
+  if (total_stream_read != Size) {
+    fprintf(stderr, "total_stream_read=%lu\tSize=%zu\n", total_stream_read,
+            Size);
+  }
+  // assert(total_stream_read == Size);
+  // assert(total_stream_written == encodechunks_size);
 
   char *decodechunks = NULL;
   size_t decodechunks_size;
@@ -96,16 +98,21 @@ int main(int argc, char* argv[]) {
                &decodechunks_size);
   do_decode_stream();
   dumpbytes(decodechunks, decodechunks_size);
-  //assert(total_stream_read == encodechunks_size);
-  //assert(total_stream_written == decodechunks_size);
-  //fprintf(stderr, "encodechunks_size=%zu\n",encodechunks_size);
-  //fprintf(stderr, "decodechunks_size=%zu\ttotal_stream_written=%zu\tSize=%zu\n",decodechunks_size, total_stream_written, Size);
+  // assert(total_stream_read == encodechunks_size);
+  // assert(total_stream_written == decodechunks_size);
+  // fprintf(stderr, "encodechunks_size=%zu\n",encodechunks_size);
+  // fprintf(stderr,
+  // "decodechunks_size=%zu\ttotal_stream_written=%zu\tSize=%zu\n",decodechunks_size,
+  // total_stream_written, Size);
 
+  // if (total_stream_written != Size) { fprintf(stderr,
+  // "total_stream_written=%lu\tSize=%zu\n", total_stream_written, Size);}
+  // assert(total_stream_written == Size);
 
-  //if (total_stream_written != Size) { fprintf(stderr, "total_stream_written=%lu\tSize=%zu\n", total_stream_written, Size);}
-  //assert(total_stream_written == Size);
-
-  if (decodechunks_size != Size) { fprintf(stderr, "decodechunks_size=%lu\tSize=%zu\n", decodechunks_size, Size);}
+  if (decodechunks_size != Size) {
+    fprintf(stderr, "decodechunks_size=%lu\tSize=%zu\n", decodechunks_size,
+            Size);
+  }
   assert(Size == decodechunks_size);
   assert(!memcmp(decodechunks, Data, Size));
 
