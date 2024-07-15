@@ -10,9 +10,10 @@
 
 // we want to build a mapping from keys to data-strings.
 typedef struct lzw_node_tag {
-  uint32_t key;
   struct lzw_node_tag *children[256];
+  uint32_t key;
 } lzw_node_t, *lzw_node_p;
+
 typedef struct {
   uint8_t *data;
   uint32_t len;

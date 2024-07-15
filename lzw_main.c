@@ -64,14 +64,16 @@ void lzw_echo_emitter(char c) {
 }
 
 void decode_stream() {
-  total_stream_read = 0;
   total_stream_written = 0;
   lzw_init();
   // Decode is guaranteed to make progress (even in presence of clear-codes)
-  while (lzw_decode(page_size))
-    ;
-  total_stream_read += lzw_bytes_read;
-  total_stream_written += lzw_bytes_written;
+  for (;;) {
+    size_t written = lzw_decode(page_size);
+    if (!written) {
+      break;
+    }
+    total_stream_written += written;
+  }
   lzw_destroy_state();
 }
 
@@ -125,11 +127,9 @@ void encode_stream() {
       // Now consume our ratio information: should we start a new block?
       if (do_ratio && page_count >= 64 &&
           (ema_slow * 1.5 < ema_fast || compression_ratio > 0.8)) {
-        fprintf(ratio_log_file, "resetting %d\n", page_count);
+        //fprintf(ratio_log_file, "resetting %d\n", page_count);
         lzw_emit_clear_code();
-        lzw_destroy_state();
-        lzw_init();
-        break;
+        break; // this will lead to the destory-state and init on the back-edge
       }
     }
     total_stream_read += lzw_bytes_read;
@@ -199,7 +199,6 @@ void round_trip_in_memory(const char *Data, size_t Size) {
   init_streams((char *)Data, Size, &encodechunks, &encodechunks_size);
   do_encode = true;
   do_decode = false;
-  // fprintf(stderr, "ENCODING\n");
   process_stream();
   close_streams();
   assert(total_stream_read == Size);
@@ -211,16 +210,10 @@ void round_trip_in_memory(const char *Data, size_t Size) {
                &decodechunks_size);
   do_encode = false;
   do_decode = true;
-  // fprintf(stderr, "DECODING\n");
   process_stream();
   close_streams();
-  // assert(total_stream_read == encodechunks_size);
-  // fprintf(stderr, "encodechunks_size=%zu\n",encodechunks_size);
-  // fprintf(stderr,
-  // "decodechunks_size=%zu\ttotal_stream_written=%zu\tSize=%zu\n",decodechunks_size,
-  // total_stream_written, Size); dumpbytes(Data, Size); dumpbytes(encodechunks,
-  // encodechunks_size); dumpbytes(decodechunks, decodechunks_size);
-  // assert(total_stream_written == Size);
+  // assert(total_stream_read == encodechunks_size); // because of clear-codes, this isn't quite true.
+  assert(total_stream_written == decodechunks_size); // We can compute this by summing decode return values.
 
   assert(Size == decodechunks_size);
   assert(!memcmp(decodechunks, Data, Size));
