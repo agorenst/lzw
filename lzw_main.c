@@ -115,7 +115,6 @@ void encode_stream() {
       }
       if (trace_ratio) {
         fprintf(ratio_log_file,
-                //"%s ratio: %f\tlzw_bytes_read: %zu\tlzw_bytes_written: %zu\n",
                 "%s ratio: %f\tema_slow=%f\tema_fast=%f\tpage_bytes_read: "
                 "%zu\tpage_bytes_written: %zu\n",
                 do_encode ? "compression  " : "decompression",
@@ -126,8 +125,10 @@ void encode_stream() {
       // Now consume our ratio information: should we start a new block?
       if (do_ratio && page_count >= 64 &&
           (ema_slow * 1.5 < ema_fast || compression_ratio > 0.8)) {
-        // fprintf(ratio_log_file, "resetting %d\n", page_count);
-          lzw_emit_clear_code();
+        fprintf(ratio_log_file, "resetting %d\n", page_count);
+        lzw_emit_clear_code();
+        lzw_destroy_state();
+        lzw_init();
         break;
       }
     }

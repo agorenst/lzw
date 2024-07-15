@@ -1,7 +1,7 @@
 #CC=afl-clang-fast
-CC=clang
+CC=gcc
 # CFLAGS=-Wall -Werror -g -fsanitize=address,undefined -std=c99 -pedantic
-CFLAGS=-Wall -Werror -g -O3 -flto -fsanitize=address,undefined
+CFLAGS=-Wall -Werror -g -O3 -flto -DNDEBUG
 #CFLAGS=-Wall -Werror -g -std=c99 -pedantic -O2
 #CFLAGS=-Wall -Werror -g -std=c99 -pedantic -O3 -flto -fsanitize=address,undefined
 
@@ -31,7 +31,8 @@ test: lzw_main
 	cat lzw.c | ./lzw_main -e -g kb 2> encode_log.txt | ./lzw_main -d -g kb 2> decode_log.txt | diff lzw.c -
 
 perf_record: lzw_main
-	cat ./../cache/tracer/itrace.out | /usr/lib/linux-tools/5.15.0-113-generic/perf record -c 100 -g  ./lzw_main -e -m 1024 > /dev/null
+	cat ./../cache/tracer/itrace.out | head -c 248231103 | /usr/lib/linux-tools/5.15.0-113-generic/perf record -c 100 -g  ./lzw_main -e -m 1024 -x > /dev/null
+# cat ./../cache/tracer/itrace.out | /usr/lib/linux-tools/5.15.0-113-generic/perf record -c 100 -g  ./lzw_main -e -m 1024 > /dev/null
 
 clean:
 	rm -f lzw_main *.o *~ test_encoding.lzw test_decoding.txt lzw_fuzz

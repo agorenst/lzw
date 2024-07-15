@@ -241,13 +241,17 @@ void lzw_init() {
   lzw_next_key = 0;
   lzw_data = calloc(1 << lzw_length, sizeof(lzw_data_t));
 
+#ifndef NDEBUG
   int old_key = DB_KEYS_SET[DB_STATE];
   DB_KEYS_SET[DB_STATE] = 0;
+  #endif
   for (uint16_t i = 0; i < 256; ++i) {
     lzw_next_char(i);
     update_length();
   }
+#ifndef NDEBUG
   DB_KEYS_SET[DB_STATE] = old_key;
+  #endif
 
   ASSERT(lzw_clear_code == lzw_next_key);
   lzw_next_key++; // reserve 256 for the clear-code.
@@ -384,12 +388,12 @@ size_t lzw_decode(size_t limit) {
            key_as_bits(curr_key, lzw_length));
     if (curr_key == lzw_clear_code) {
       DTRACE(DB_STATE, "lzw_decode:hit clear code\n");
-      lzw_destroy_state(); // this asserts our bitread buffer is in a good place
-                           // too.
+      lzw_destroy_state();
+      // Curious thing: we can return a value greater than lzw_bytes_read,
+      // as lzw_init() set that back to 0. We continue because we also
+      // promise to always emit something when we're called.
       lzw_init();
-      continue; // I guess we just go? Curious: read can exceed the
-                // lzw_bytes_read, when we hit this "near the end" of our
-                // iteration.
+      continue;
     }
     ASSERT(lzw_valid_key(curr_key));
 
