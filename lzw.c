@@ -142,14 +142,17 @@ int lzw_next_char(uint8_t c) {
 
 // We also have book-keeping of when we have to
 // update the length
+static size_t lzw_data_size(void) {
+  return (1 << lzw_length)*sizeof(lzw_data_t);
+}
 void lzw_len_update() {
   DTRACE(DB_STATE, "INCLENGTH %d->%d\n", lzw_length, lzw_length + 1)
+  size_t old_length = lzw_data_size();
   lzw_length++;
-  lzw_data_t *new_data = calloc(1 << lzw_length, sizeof(lzw_data_t));
-  memcpy(new_data, lzw_data, sizeof(lzw_data_t) * (1 << (lzw_length - 1)));
-  lzw_data_t *tmp = lzw_data;
-  lzw_data = new_data;
-  free(tmp);
+  size_t new_length = lzw_data_size();
+  ASSERT(old_length*2 == new_length);
+  lzw_data = realloc(lzw_data, new_length);
+  memset((char*)lzw_data+old_length, 0, old_length);
 }
 
 // We also want to destroy our tree, ultimately
@@ -210,13 +213,17 @@ uint8_t bitwrite_buffer_pop_byte(void) {
   return b;
 }
 
-static uint8_t FILE_EMIT_BUFFER[4096];
+#ifndef IO_BUFFER_SIZE
+#define IO_BUFFER_SIZE 4096
+#endif
+static uint8_t FILE_EMIT_BUFFER[IO_BUFFER_SIZE];
 static int emit_buffer_next = 0;
 void emit_buffer_flush() {
   fwrite(FILE_EMIT_BUFFER, 1, emit_buffer_next, lzw_output_file);
   emit_buffer_next = 0;
 }
 void lzw_emit_byte(uint8_t c) {
+  //fputc(c, lzw_output_file); return;
   if (emit_buffer_next == sizeof(FILE_EMIT_BUFFER)) {
     emit_buffer_flush();
   }
@@ -281,7 +288,7 @@ void lzw_init() {
   lzw_bytes_written = 0;
 }
 
-static uint8_t FILE_READ_BUFFER[4096];
+static uint8_t FILE_READ_BUFFER[IO_BUFFER_SIZE];
 static int read_buffer_next = 0;
 static int read_buffer_max = 0;
 uint32_t lzw_read_byte(void) {
@@ -409,8 +416,7 @@ bool readbits(uint32_t *v) {
 
 bool lzw_valid_key(uint32_t k) {
   ASSERT(k < (1 << (lzw_length)));
-  return lzw_data[k].data !=
-         NULL; // this excludes the clear-code, for instance.
+  return lzw_data[k].data != NULL;
 }
 
 size_t lzw_decode(size_t limit) {
@@ -457,7 +463,6 @@ size_t lzw_decode(size_t limit) {
     }
     if (curr_key == lzw_clear_code) {
       // Skip our checks: we don't want to evolve our state.
-      // this was a bear.
       bitread_buffer_size += lzw_length;
       continue;
     }
@@ -475,11 +480,7 @@ size_t lzw_decode(size_t limit) {
     if (lzw_valid_key(curr_key)) {
       s = lzw_data[curr_key].data;
     } else {
-      if (!(curr_key - 1 == lzw_clear_code || lzw_valid_key(curr_key - 1))) {
-        fprintf(stderr, "%u %u %u\n", curr_key, lzw_clear_code, lzw_max_key);
-      }
-      ASSERT(curr_key - 1 == lzw_clear_code || lzw_valid_key(curr_key - 1) ||
-             curr_key == lzw_max_key); // last condition is a hack, hold on.
+      ASSERT(curr_key - 1 == lzw_clear_code || lzw_valid_key(curr_key - 1));
     }
     DEBUG_STMT(int b =)
     lzw_next_char(s[0]);
