@@ -127,10 +127,7 @@ void encode_stream() {
       if (do_ratio && page_count >= 64 &&
           (ema_slow * 1.5 < ema_fast || compression_ratio > 0.8)) {
         // fprintf(ratio_log_file, "resetting %d\n", page_count);
-        if (!feof(lzw_input_file)) { // the issue (???) is that we're sort of
-                                     // closing the stream twice.
           lzw_emit_clear_code();
-        }
         break;
       }
     }
@@ -322,9 +319,6 @@ int main(int argc, char *argv[]) {
 
   lzw_input_file = user_input;
   lzw_output_file = user_output;
-
-  // lzw_reader = lzw_echo_reader;
-  // lzw_emitter = lzw_echo_emitter;
 
   if (correctness_roundtrip) {
     round_trip();
