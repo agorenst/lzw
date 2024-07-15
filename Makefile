@@ -48,9 +48,12 @@ lzw_test: lzw.o
 test: lzw_main
 	cat lzw.c | ./lzw_main -e -g kb 2> encode_log.txt | ./lzw_main -d -g kb 2> decode_log.txt | diff lzw.c -
 
+perf_record: CC=gcc
+perf_record: CFLAGS+=-DNDEBUG
 perf_record: lzw_main
 	cat ./../cache/tracer/itrace.out | head -c 248231103 | /usr/lib/linux-tools/5.15.0-113-generic/perf record -c 100 -g  ./lzw_main -c -m 1024 -x > /dev/null
 # cat ./../cache/tracer/itrace.out | /usr/lib/linux-tools/5.15.0-113-generic/perf record -c 100 -g  ./lzw_main -e -m 1024 > /dev/null
+# 
 
 clean_pgo:
 	rm -f lzw_pogo lzw_pgopt *.profraw *profdata

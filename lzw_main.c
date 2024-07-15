@@ -85,12 +85,14 @@ void encode_stream() {
     ratio_log_file = fopen(ratio_log_filename, "w");
   }
 
+  const int ema_delay = 32;
+
   for (int block_count = 0;; block_count++) {
     reset_written();
     double ema_slow = 0.0;
-    double ema_slow_alpha = 0.0005;
+    double ema_slow_alpha = 0.0001;
     double ema_fast = 0.0;
-    double ema_fast_alpha = 0.05;
+    double ema_fast_alpha = 0.01;
 
     lzw_init();
 
@@ -108,7 +110,7 @@ void encode_stream() {
       // We've processed a page's worth of data, now
       // evaluate our compression ratio and windows.
       double compression_ratio = next_ratio();
-      if (page_count < 64) {
+      if (page_count < ema_delay) {
         ema_slow = compression_ratio;
         ema_fast = compression_ratio;
       } else {
@@ -125,9 +127,11 @@ void encode_stream() {
       }
 
       // Now consume our ratio information: should we start a new block?
-      if (do_ratio && page_count >= 64 &&
-          (ema_slow * 1.5 < ema_fast || compression_ratio > 0.8)) {
-        //fprintf(ratio_log_file, "resetting %d\n", page_count);
+      if (do_ratio && page_count >= ema_delay &&
+          (ema_slow * 1.5 < ema_fast || ema_fast > 0.7)) {
+        if (trace_ratio) {
+          fprintf(ratio_log_file, "resetting %d\n", page_count);
+        }
         lzw_emit_clear_code();
         break; // this will lead to the destory-state and init on the back-edge
       }
