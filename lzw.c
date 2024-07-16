@@ -86,7 +86,7 @@ void lzw_set_debug_string(const char *s) {
 #endif
 }
 
-// For debug purposes
+#ifndef NDEBUG
 static const char *key_as_bits(uint32_t v, uint8_t l) {
   // ASSERT((v & ((1 << l) - 1)) == v); // v doesn't have extra bits
   static char format[(1 << 8 * sizeof(uint8_t)) + 1];
@@ -103,9 +103,39 @@ static const char *key_as_bits(uint32_t v, uint8_t l) {
   format[l] = '\0';
   return format;
 }
+#endif
 
 enum { NEXT_CHAR_CONTINUE = 0, NEXT_CHAR_MAX = 1, NEXT_CHAR_NEW = 2 };
 const uint32_t lzw_clear_code = 256;
+
+#define POOL_SIZE 1024*1024*8
+typedef struct pool_stack_tag {
+  uint8_t mem[POOL_SIZE];
+  size_t i;
+  struct pool_stack_tag *prev;
+} pool_stack_t, *pool_stack_p;
+
+pool_stack_p string_pool = NULL;
+uint8_t* alloc_string(size_t b) {
+  if (string_pool->i+b >= POOL_SIZE) {
+    pool_stack_p next = malloc(sizeof(pool_stack_t));
+    next->prev = string_pool;
+    next->i = 0;
+    string_pool = next;
+  }
+  ASSERT(b < POOL_SIZE);
+  uint8_t *to_ret = &string_pool->mem[string_pool->i];
+  string_pool->i += b;
+  return to_ret;
+}
+
+void destroy_string_pool(void) {
+  while (string_pool) {
+    pool_stack_p p = string_pool->prev;
+    free(string_pool);
+    string_pool = p;
+  }
+}
 
 // The primary action of this table is to ingest
 // the next byte, and maintain the correct encoding
@@ -127,6 +157,7 @@ int lzw_next_char(uint8_t c) {
   const uint32_t k = lzw_next_key++;
   const uint32_t l = curr->key == -1 ? 0 : lzw_data[curr->key].len;
   uint8_t *data = calloc(l + 1, sizeof(uint8_t));
+  //uint8_t *data = alloc_string(l+1);
   if (l) {
     memcpy(data, lzw_data[curr->key].data, l * sizeof(uint8_t));
   }
@@ -155,7 +186,6 @@ void lzw_len_update() {
   memset((char*)lzw_data+old_length, 0, old_length);
 }
 
-// We also want to destroy our tree, ultimately
 void lzw_destroy_tree(lzw_node_p t) {
   if (!t)
     return;
@@ -167,19 +197,8 @@ void lzw_destroy_tree(lzw_node_p t) {
 
 uint32_t bitread_buffer_pop_bits(uint32_t bitcount);
 
-void debug_bitread_buffer() {
-  for (int i = 0; i < BITREAD_BUFFER_MAX_SIZE; i++) {
-    fprintf(stderr, "%c",
-            (bitread_buffer >> (BITREAD_BUFFER_MAX_SIZE - (i + 1))) == 1 ? '1'
-                                                                         : '0');
-    if (i == bitread_buffer_size) {
-      fprintf(stderr, "|");
-    }
-  }
-  fprintf(stderr, "\t(%d)\n", bitread_buffer_size);
-}
-
 void lzw_destroy_state(void) {
+  destroy_string_pool();
   lzw_destroy_tree(root);
   curr = NULL;
   root = NULL;
@@ -192,10 +211,6 @@ void lzw_destroy_state(void) {
     lzw_data = NULL;
   }
   lzw_next_key = 0;
-  if ((bitread_buffer & ((1 << bitread_buffer_size) - 1)) != 0) {
-    fprintf(stderr, "BAD BITREAD BUFFER: %d %s\n", bitread_buffer_size,
-            key_as_bits(bitread_buffer, bitread_buffer_size));
-  }
   ASSERT((bitread_buffer & ((1 << bitread_buffer_size) - 1)) == 0);
 }
 
@@ -261,6 +276,8 @@ void lzw_init() {
   lzw_length = 1;
   lzw_next_key = 0;
   lzw_data = calloc(1 << lzw_length, sizeof(lzw_data_t));
+
+  string_pool = calloc(1, sizeof(pool_stack_t));
 
 #ifndef NDEBUG
   int old_key = DB_KEYS_SET[DB_STATE];
