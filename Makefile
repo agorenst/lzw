@@ -3,7 +3,7 @@ CFLAGS=-Wall -Werror -g -O2 -flto
 
 lzw_time: CFLAGS+=-DNDEBUG
 lzw_time: lzw_main
-	cat ./../cache/tracer/itrace.out | head -c 248231103 | /usr/bin/time -v ./lzw_main -C -x -m 4096 2>&1 | grep "User time"
+	cat ./../cache/tracer/itrace.out | head -c 248231103 | /usr/bin/time -v ./lzw_main -C -x -m 4096 2>&1 | grep -e "User time" -e "Maximum resident"
 
 lzw_main: lzw_main.o lzw.o
 	$(CC) $(CFLAGS) $^ -o $@

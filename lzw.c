@@ -92,18 +92,12 @@ void lzw_set_debug_string(const char *s) {
 }
 
 #ifndef NDEBUG
-static const char *key_as_bits(uint32_t v, uint8_t l) {
-  // ASSERT((v & ((1 << l) - 1)) == v); // v doesn't have extra bits
+static const char *asbits(uint64_t v, uint8_t l) {
   static char format[(1 << 8 * sizeof(uint8_t)) + 1];
   // Emit bits backwards
   for (int i = 0; i < l; i++) {
-    format[i] = v % 2 ? '1' : '0';
+    format[l-(i+1)] = v % 2 ? '1' : '0';
     v >>= 1;
-  }
-  for (int i = 0; i < l / 2; i++) {
-    char t = format[i];
-    format[i] = format[l - (i + 1)];
-    format[l - (i + 1)] = t;
   }
   format[l] = '\0';
   return format;
@@ -226,12 +220,12 @@ void lzw_emit_byte(uint8_t c) {
 // emit the l bits of v.
 void emit(uint32_t v, uint8_t l) {
   ASSERT((v & ((1 << l) - 1)) == v); // v doesn't have extra bits
-  DTRACE(DB_KEY_STREAM, "EMITKEY(%d):\t\t%d\t%s\n", l, v, key_as_bits(v, l));
+  DTRACE(DB_KEY_STREAM, "EMITKEY(%d):\t\t%d\t%s\n", l, v, asbits(v, l));
   bitwrite_buffer_push_bits(v, l);
   while (bitwrite_buffer_size >= 8) {
     uint8_t c = bitwrite_buffer_pop_byte();
     DTRACE(DB_BYTE_STREAM, "EMITBYTE(encode):\t%#x\t%s\n", c,
-           key_as_bits(c, 8));
+           asbits(c, 8));
     lzw_emit_byte(c);
     lzw_bytes_written++;
   }
@@ -313,7 +307,7 @@ size_t lzw_encode(size_t l) {
     }
     i++;
     DTRACE(DB_BYTE_STREAM, "READBYTE(encode):\t%#x\t%s\n", c,
-           key_as_bits(c, 8));
+           asbits(c, 8));
     if (lzw_next_char(c) != NEXT_CHAR_CONTINUE) {
       emit(curr->key, lzw_length);
       curr = root;
@@ -396,7 +390,7 @@ bool readbits(uint32_t *v) {
       return false;
     }
     DTRACE(DB_BYTE_STREAM, "READBYTE(decode):\t%#x\t%s\n", c,
-           key_as_bits(c, 8));
+           asbits(c, 8));
     lzw_bytes_read++;
     bitread_buffer_push_byte(c);
   }
@@ -414,7 +408,7 @@ size_t lzw_decode(size_t limit) {
   size_t read = 0;
   while (read < limit && readbits(&curr_key)) {
     DTRACE(DB_KEY_STREAM, "READKEY(%d):\t\t%d\t%s\n", lzw_length, curr_key,
-           key_as_bits(curr_key, lzw_length));
+           asbits(curr_key, lzw_length));
     if (curr_key == lzw_clear_code) {
       DTRACE(DB_STATE, "DECODE\tCLEAR_CODE\n");
       lzw_destroy_state();
