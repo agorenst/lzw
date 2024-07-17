@@ -96,7 +96,7 @@ static const char *asbits(uint64_t v, uint8_t l) {
   static char format[(1 << 8 * sizeof(uint8_t)) + 1];
   // Emit bits backwards
   for (int i = 0; i < l; i++) {
-    format[l-(i+1)] = v % 2 ? '1' : '0';
+    format[l - (i + 1)] = v % 2 ? '1' : '0';
     v >>= 1;
   }
   format[l] = '\0';
@@ -137,7 +137,7 @@ int lzw_next_char(uint8_t c) {
   lzw_data[k].data = data;
   lzw_data[k].len = l + 1;
   lzw_data[k].parent = curr->children[c];
-  DTRACE(DB_DICTIONARY, "DICT\tADD\t%u\t%u\t%u\t%#x\n", k, curr->key, l+1, c);
+  DTRACE(DB_DICTIONARY, "DICT\tADD\t%u\t%u\t%u\t%#x\n", k, curr->key, l + 1, c);
   DTRACE(DB_STATE, "APPEND(%#x)\t\tNEWSTATE %u\n", c, k);
   return NEXT_CHAR_NEW;
 }
@@ -145,16 +145,16 @@ int lzw_next_char(uint8_t c) {
 // We also have book-keeping of when we have to
 // update the length
 static size_t lzw_data_size(void) {
-  return (1 << lzw_length)*sizeof(lzw_data_t);
+  return (1 << lzw_length) * sizeof(lzw_data_t);
 }
 void lzw_len_update() {
   DTRACE(DB_STATE, "INCLENGTH %d->%d\n", lzw_length, lzw_length + 1)
   size_t old_length = lzw_data_size();
   lzw_length++;
   size_t new_length = lzw_data_size();
-  ASSERT(old_length*2 == new_length);
+  ASSERT(old_length * 2 == new_length);
   lzw_data = realloc(lzw_data, new_length);
-  memset((char*)lzw_data+old_length, 0, old_length);
+  memset((char *)lzw_data + old_length, 0, old_length);
 }
 
 void lzw_destroy_tree(lzw_node_p t) {
@@ -202,18 +202,17 @@ uint8_t bitwrite_buffer_pop_byte(void) {
 #ifndef IO_BUFFER_SIZE
 #define IO_BUFFER_SIZE 4096
 #endif
-static uint8_t FILE_EMIT_BUFFER[IO_BUFFER_SIZE];
+static uint8_t fwrite_buffer[IO_BUFFER_SIZE];
 static int emit_buffer_next = 0;
 void emit_buffer_flush() {
-  fwrite(FILE_EMIT_BUFFER, 1, emit_buffer_next, lzw_output_file);
+  fwrite(fwrite_buffer, 1, emit_buffer_next, lzw_output_file);
   emit_buffer_next = 0;
 }
 void lzw_emit_byte(uint8_t c) {
-  //fputc(c, lzw_output_file); return;
-  if (emit_buffer_next == sizeof(FILE_EMIT_BUFFER)) {
+  if (emit_buffer_next == sizeof(fwrite_buffer)) {
     emit_buffer_flush();
   }
-  FILE_EMIT_BUFFER[emit_buffer_next++] = c;
+  fwrite_buffer[emit_buffer_next++] = c;
 }
 
 // Reading v from "left to right", we
@@ -224,8 +223,7 @@ void emit(uint32_t v, uint8_t l) {
   bitwrite_buffer_push_bits(v, l);
   while (bitwrite_buffer_size >= 8) {
     uint8_t c = bitwrite_buffer_pop_byte();
-    DTRACE(DB_BYTE_STREAM, "EMITBYTE(encode):\t%#x\t%s\n", c,
-           asbits(c, 8));
+    DTRACE(DB_BYTE_STREAM, "EMITBYTE(encode):\t%#x\t%s\n", c, asbits(c, 8));
     lzw_emit_byte(c);
     lzw_bytes_written++;
   }
@@ -253,7 +251,7 @@ void lzw_init() {
   DB_KEYS_SET[DB_STATE] = 0;
   int old_dict_key = DB_KEYS_SET[DB_DICTIONARY];
   DB_KEYS_SET[DB_DICTIONARY] = 0;
-  #endif
+#endif
   for (uint16_t i = 0; i < 256; ++i) {
     lzw_next_char(i);
     update_length();
@@ -261,7 +259,7 @@ void lzw_init() {
 #ifndef NDEBUG
   DB_KEYS_SET[DB_STATE] = old_state_key;
   DB_KEYS_SET[DB_DICTIONARY] = old_dict_key;
-  #endif
+#endif
 
   ASSERT(lzw_clear_code == lzw_next_key);
   lzw_next_key++; // reserve 256 for the clear-code.
@@ -277,23 +275,22 @@ void lzw_init() {
   lzw_bytes_written = 0;
 }
 
-static uint8_t FILE_READ_BUFFER[IO_BUFFER_SIZE];
+static uint8_t fread_buffer[IO_BUFFER_SIZE];
 static int read_buffer_next = 0;
 static int read_buffer_max = 0;
 uint32_t lzw_read_byte(void) {
-  //return fgetc(lzw_input_file);
   if (read_buffer_next == read_buffer_max) {
-    read_buffer_max = fread(FILE_READ_BUFFER, 1, sizeof(FILE_READ_BUFFER), lzw_input_file);
+    read_buffer_max =
+        fread(fread_buffer, 1, sizeof(fread_buffer), lzw_input_file);
     read_buffer_next = 0;
   }
   if (read_buffer_max == 0) {
     return EOF;
   }
-  return FILE_READ_BUFFER[read_buffer_next++];
+  return fread_buffer[read_buffer_next++];
 }
 
 bool input_eof(void) { return read_buffer_max == 0 && feof(lzw_input_file); }
-
 
 size_t lzw_encode(size_t l) {
   size_t i = 0;
@@ -306,8 +303,7 @@ size_t lzw_encode(size_t l) {
       break;
     }
     i++;
-    DTRACE(DB_BYTE_STREAM, "READBYTE(encode):\t%#x\t%s\n", c,
-           asbits(c, 8));
+    DTRACE(DB_BYTE_STREAM, "READBYTE(encode):\t%#x\t%s\n", c, asbits(c, 8));
     if (lzw_next_char(c) != NEXT_CHAR_CONTINUE) {
       emit(curr->key, lzw_length);
       curr = root;
@@ -371,6 +367,7 @@ void bitread_buffer_push_byte(uint8_t c) {
   bitread_buffer |= c;
   bitread_buffer_size += 8;
 }
+
 uint32_t bitread_buffer_pop_bits(uint32_t bitcount) {
   ASSERT(bitread_buffer_size >= bitcount);
   uint64_t bitread_buffer_copy = bitread_buffer;
@@ -389,8 +386,7 @@ bool readbits(uint32_t *v) {
       DTRACE(DB_BYTE_STREAM, "READBYTE(decode):\t%d\n", c);
       return false;
     }
-    DTRACE(DB_BYTE_STREAM, "READBYTE(decode):\t%#x\t%s\n", c,
-           asbits(c, 8));
+    DTRACE(DB_BYTE_STREAM, "READBYTE(decode):\t%#x\t%s\n", c, asbits(c, 8));
     lzw_bytes_read++;
     bitread_buffer_push_byte(c);
   }
