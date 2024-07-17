@@ -51,18 +51,6 @@ void reset_written() {
   prev_bytes_read = 0;
 }
 
-int lzw_echo_reader(void) {
-  static int reader_count = 0;
-  char c = fgetc(lzw_input_file);
-  fprintf(stderr, "READ\t%x\t%d\n", c, reader_count++);
-  return c;
-}
-void lzw_echo_emitter(char c) {
-  static int writer_count = 0;
-  fprintf(stderr, "WRITE\t%x\t%d\n", c, writer_count++);
-  fputc(c, lzw_output_file);
-}
-
 void decode_stream() {
   total_stream_written = 0;
   lzw_init();
@@ -228,13 +216,21 @@ void round_trip_in_memory(const char *Data, size_t Size) {
 
 #ifdef FUZZ_MODE
 int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
-  if (Size == 0) {
+  if (Size < 12) { // just reserve enough bytes.
     return 0;
   }
-  page_size = 7;
-  lzw_max_key = 512;
-  do_ratio = true;
-  round_trip_in_memory((const char *)Data, Size);
+  // Peel off of the first chunk of data to choose our settings
+  lzw_max_key = *(uint32_t*)(&Data[0]);
+  if (lzw_max_key < 257) {
+    return 0;
+  }
+  page_size = *(uint32_t*)(&Data[4]);
+  if (page_size == 0) {
+    return 0;
+  }
+  do_ratio = (Data[9] % 2) == 0;
+  //fprintf(stderr, "page_size=%zu\tlzw_max_key=%u\tdo_ratio=%d\n", page_size, lzw_max_key, do_ratio);
+  round_trip_in_memory((const char *)Data+10, Size-10);
   return 0;
 }
 #else
