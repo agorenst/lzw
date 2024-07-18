@@ -1,9 +1,14 @@
 CC=clang
 CFLAGS=-Wall -Werror -g -O2 -flto
 
+lzw.pdf : lzw.tex
+		latexmk -pdf -shell-escape $(basename $<)
+# lzw.tex : lzw.nw
+# 		./myweave.sh $< > $@
+
 lzw_time: CFLAGS+=-DNDEBUG
 lzw_time: lzw_main
-	cat ./../cache/tracer/itrace.out | head -c 248231103 | /usr/bin/time -v ./lzw_main -C -x -m 4096 2>&1 | grep -e "User time" -e "Maximum resident"
+	cat ./../cache/tracer/itrace.out | /usr/bin/time -v ./lzw_main -C -x -m 65530 2>&1 | grep -e "User time" -e "Maximum resident"
 
 lzw_main: lzw_main.o lzw.o
 	$(CC) $(CFLAGS) $^ -o $@

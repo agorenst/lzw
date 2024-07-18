@@ -8,11 +8,58 @@
 
 #include "lzw.h"
 
+typedef struct lzw_node_tag *lzw_node_p;
+typedef struct lzw_childen_set_tag {
+  bool use_array;
+    struct {
+      int index;
+      struct {
+        uint8_t key;
+        lzw_node_p value;
+      } immediate[4];
+    } local;
+    lzw_node_p *all;
+} lzw_children_set_t;
+
+lzw_node_p children_set_find(lzw_children_set_t* s, uint8_t k) {
+  if (!s->use_array) {
+    int max_index = s->local.index;
+    for (int i = 0; i < max_index; i++) {
+      if (s->local.immediate[i].key == k) {
+        return s->local.immediate[i].value;
+      }
+    }
+    return NULL;
+  }
+  return s->all[k];
+}
+
+
 // we want to build a mapping from keys to data-strings.
 typedef struct lzw_node_tag {
-  struct lzw_node_tag *children[256];
+  lzw_children_set_t children;
   uint32_t key;
 } lzw_node_t, *lzw_node_p;
+
+lzw_node_p children_set_allocate(lzw_children_set_t* s, uint8_t c, uint32_t k) {
+  lzw_node_p r = calloc(1, sizeof(lzw_node_t));
+  r->key = k;
+  if (!s->use_array) {
+    int n = s->local.index++;
+    if (n < 4) {
+    s->local.immediate[n].key = c;
+    s->local.immediate[n].value = r;
+    return r;
+    }
+    s->use_array = true;
+    s->all = calloc(256, sizeof(lzw_node_p));
+    for (int i = 0; i < n; i++) {
+      s->all[s->local.immediate[i].key] = s->local.immediate[i].value;
+    }
+  }
+  s->all[c] = r;
+  return r;
+}
 
 typedef struct {
   uint8_t *data;
@@ -112,10 +159,10 @@ const uint32_t lzw_clear_code = 256;
 // information for the implicit string seen-so-far.
 // That's captured in this function:
 int lzw_next_char(uint8_t c) {
-  if (curr->children[c]) {
-    DTRACE(DB_STATE, "APPEND(%#x)\t\tSTATE %u -> %u\n", c, curr->key,
-           curr->children[c]->key);
-    curr = curr->children[c];
+  lzw_node_p next = children_set_find(&curr->children, c);
+  if (next) {
+    DTRACE(DB_STATE, "APPEND(%#x)\t\tSTATE\t%u\t%u\n", c, curr->key, next->key);
+    curr = next;
     return NEXT_CHAR_CONTINUE;
   }
   // we have reached the end of the string.
@@ -125,18 +172,16 @@ int lzw_next_char(uint8_t c) {
   }
   // Create the new fields for the new node
   const uint32_t k = lzw_next_key++;
+  next = children_set_allocate(&curr->children, c, k);
   const uint32_t l = curr->key == -1 ? 0 : lzw_data[curr->key].len;
   uint8_t *data = calloc(l + 1, sizeof(uint8_t));
   if (l) {
     memcpy(data, lzw_data[curr->key].data, l * sizeof(uint8_t));
   }
   data[l] = c;
-  // allocate the new node
-  curr->children[c] = calloc(1, sizeof(lzw_node_t));
-  curr->children[c]->key = k;
   lzw_data[k].data = data;
   lzw_data[k].len = l + 1;
-  lzw_data[k].parent = curr->children[c];
+  lzw_data[k].parent = next;
   DTRACE(DB_DICTIONARY, "DICT\tADD\t%u\t%u\t%u\t%#x\n", k, curr->key, l + 1, c);
   DTRACE(DB_STATE, "APPEND(%#x)\t\tNEWSTATE %u\n", c, k);
   return NEXT_CHAR_NEW;
@@ -147,6 +192,7 @@ int lzw_next_char(uint8_t c) {
 static size_t lzw_data_size(void) {
   return (1 << lzw_length) * sizeof(lzw_data_t);
 }
+
 void lzw_len_update() {
   DTRACE(DB_STATE, "INCLENGTH %d->%d\n", lzw_length, lzw_length + 1)
   size_t old_length = lzw_data_size();
@@ -157,19 +203,32 @@ void lzw_len_update() {
   memset((char *)lzw_data + old_length, 0, old_length);
 }
 
-void lzw_destroy_tree(lzw_node_p t) {
+void lzw_destroy_tree(lzw_node_p t, bool free_node) ;
+void lzw_destroy_tree_children(lzw_node_p t) {
+  if (t->children.use_array) {
+    for (uint16_t i = 0; i < 256; ++i) {
+      lzw_destroy_tree(t->children.all[i], true);
+    }
+    free(t->children.all);
+  } else {
+    int n = t->children.local.index;
+    for (int i = 0; i < n; i++ ){
+      lzw_destroy_tree(t->children.local.immediate[i].value, true);
+    }
+  }
+}
+
+void lzw_destroy_tree(lzw_node_p t, bool free_node) {
   if (!t)
     return;
-  for (uint16_t i = 0; i < 256; ++i) {
-    lzw_destroy_tree(t->children[i]);
-  }
-  free(t);
+  lzw_destroy_tree_children(t);
+  if (free_node) free(t);
 }
 
 uint32_t bitread_buffer_pop_bits(uint32_t bitcount);
 
 void lzw_destroy_state(void) {
-  lzw_destroy_tree(root);
+  lzw_destroy_tree(root, true);
   curr = NULL;
   root = NULL;
   for (uint32_t i = 0; i < lzw_next_key; ++i) {
