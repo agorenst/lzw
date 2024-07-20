@@ -9,57 +9,24 @@
 #include "lzw.h"
 
 typedef struct lzw_node_tag *lzw_node_p;
-typedef struct lzw_childen_set_tag {
+
+typedef struct lzw_children_set_tag {
   bool use_array;
+  struct {
+    int index;
     struct {
-      int index;
-      struct {
-        uint8_t key;
-        lzw_node_p value;
-      } immediate[4];
-    } local;
-    lzw_node_p *all;
+      uint8_t key;
+      lzw_node_p value;
+    } immediate[4];
+  } local;
+  lzw_node_p *all;
 } lzw_children_set_t;
-
-lzw_node_p children_set_find(lzw_children_set_t* s, uint8_t k) {
-  if (!s->use_array) {
-    int max_index = s->local.index;
-    for (int i = 0; i < max_index; i++) {
-      if (s->local.immediate[i].key == k) {
-        return s->local.immediate[i].value;
-      }
-    }
-    return NULL;
-  }
-  return s->all[k];
-}
-
 
 // we want to build a mapping from keys to data-strings.
 typedef struct lzw_node_tag {
   lzw_children_set_t children;
   uint32_t key;
 } lzw_node_t, *lzw_node_p;
-
-lzw_node_p children_set_allocate(lzw_children_set_t* s, uint8_t c, uint32_t k) {
-  lzw_node_p r = calloc(1, sizeof(lzw_node_t));
-  r->key = k;
-  if (!s->use_array) {
-    int n = s->local.index++;
-    if (n < 4) {
-    s->local.immediate[n].key = c;
-    s->local.immediate[n].value = r;
-    return r;
-    }
-    s->use_array = true;
-    s->all = calloc(256, sizeof(lzw_node_p));
-    for (int i = 0; i < n; i++) {
-      s->all[s->local.immediate[i].key] = s->local.immediate[i].value;
-    }
-  }
-  s->all[c] = r;
-  return r;
-}
 
 typedef struct {
   uint8_t *data;
@@ -83,7 +50,7 @@ uint64_t lzw_bytes_read = 0;
 
 // There's an implicit invariant that our lzw_length can never be more than 32,
 // and this means our buffers always need at least 2 uses before overflowing.
-// Some of our iteration depends on that (in particular emit, which
+// Some of our iteration depends on that (in particular write_key, which
 // unconditionally enbuffers something before trying to drain it).
 uint64_t bitread_buffer = 0;
 uint32_t bitread_buffer_size = 0;
@@ -151,6 +118,39 @@ static const char *asbits(uint64_t v, uint8_t l) {
 }
 #endif
 
+lzw_node_p children_set_find(lzw_children_set_t *s, uint8_t k) {
+  if (!s->use_array) {
+    int max_index = s->local.index;
+    for (int i = 0; i < max_index; i++) {
+      if (s->local.immediate[i].key == k) {
+        return s->local.immediate[i].value;
+      }
+    }
+    return NULL;
+  }
+  return s->all[k];
+}
+
+lzw_node_p children_set_allocate(lzw_children_set_t *s, uint8_t c, uint32_t k) {
+  lzw_node_p r = calloc(1, sizeof(lzw_node_t));
+  r->key = k;
+  if (!s->use_array) {
+    int n = s->local.index++;
+    if (n < 4) {
+      s->local.immediate[n].key = c;
+      s->local.immediate[n].value = r;
+      return r;
+    }
+    s->use_array = true;
+    s->all = calloc(256, sizeof(lzw_node_p));
+    for (int i = 0; i < n; i++) {
+      s->all[s->local.immediate[i].key] = s->local.immediate[i].value;
+    }
+  }
+  s->all[c] = r;
+  return r;
+}
+
 enum { NEXT_CHAR_CONTINUE = 0, NEXT_CHAR_MAX = 1, NEXT_CHAR_NEW = 2 };
 const uint32_t lzw_clear_code = 256;
 
@@ -203,32 +203,25 @@ void lzw_len_update() {
   memset((char *)lzw_data + old_length, 0, old_length);
 }
 
-void lzw_destroy_tree(lzw_node_p t, bool free_node) ;
-void lzw_destroy_tree_children(lzw_node_p t) {
+void free_dictionary(lzw_node_p t) {
+  if (!t)
+    return;
   if (t->children.use_array) {
     for (uint16_t i = 0; i < 256; ++i) {
-      lzw_destroy_tree(t->children.all[i], true);
+      free_dictionary(t->children.all[i]);
     }
     free(t->children.all);
   } else {
     int n = t->children.local.index;
-    for (int i = 0; i < n; i++ ){
-      lzw_destroy_tree(t->children.local.immediate[i].value, true);
+    for (int i = 0; i < n; i++) {
+      free_dictionary(t->children.local.immediate[i].value);
     }
   }
+  free(t);
 }
-
-void lzw_destroy_tree(lzw_node_p t, bool free_node) {
-  if (!t)
-    return;
-  lzw_destroy_tree_children(t);
-  if (free_node) free(t);
-}
-
-uint32_t bitread_buffer_pop_bits(uint32_t bitcount);
 
 void lzw_destroy_state(void) {
-  lzw_destroy_tree(root, true);
+  free_dictionary(root);
   curr = NULL;
   root = NULL;
   for (uint32_t i = 0; i < lzw_next_key; ++i) {
@@ -263,27 +256,27 @@ uint8_t bitwrite_buffer_pop_byte(void) {
 #endif
 static uint8_t fwrite_buffer[IO_BUFFER_SIZE];
 static int emit_buffer_next = 0;
-void emit_buffer_flush() {
+void write_buffer_flush() {
   fwrite(fwrite_buffer, 1, emit_buffer_next, lzw_output_file);
   emit_buffer_next = 0;
 }
-void lzw_emit_byte(uint8_t c) {
+void lzw_write_byte(uint8_t c) {
   if (emit_buffer_next == sizeof(fwrite_buffer)) {
-    emit_buffer_flush();
+    write_buffer_flush();
   }
   fwrite_buffer[emit_buffer_next++] = c;
 }
 
 // Reading v from "left to right", we
 // emit the l bits of v.
-void emit(uint32_t v, uint8_t l) {
+void write_key(uint32_t v, uint8_t l) {
   ASSERT((v & ((1 << l) - 1)) == v); // v doesn't have extra bits
   DTRACE(DB_KEY_STREAM, "EMITKEY(%d):\t\t%d\t%s\n", l, v, asbits(v, l));
   bitwrite_buffer_push_bits(v, l);
   while (bitwrite_buffer_size >= 8) {
     uint8_t c = bitwrite_buffer_pop_byte();
     DTRACE(DB_BYTE_STREAM, "EMITBYTE(encode):\t%#x\t%s\n", c, asbits(c, 8));
-    lzw_emit_byte(c);
+    lzw_write_byte(c);
     lzw_bytes_written++;
   }
 }
@@ -364,7 +357,7 @@ size_t lzw_encode(size_t l) {
     i++;
     DTRACE(DB_BYTE_STREAM, "READBYTE(encode):\t%#x\t%s\n", c, asbits(c, 8));
     if (lzw_next_char(c) != NEXT_CHAR_CONTINUE) {
-      emit(curr->key, lzw_length);
+      write_key(curr->key, lzw_length);
       curr = root;
       update_length();
       lzw_next_char(c);
@@ -377,13 +370,13 @@ size_t lzw_encode(size_t l) {
   return i;
 }
 
-void lzw_emit_clear_code(void) {
+void lzw_write_clear_code(void) {
   DTRACE(DB_STATE, "CLEAR_CODE\t%zu\t%d\n", lzw_bytes_written, input_eof());
   if (input_eof()) {
     return; // don't bother
   }
   if (curr != root) {
-    emit(curr->key, lzw_length);
+    write_key(curr->key, lzw_length);
     curr = root;
     // When we read in a code, we always assume that it's a new key
     // (unless if we're at the max). So our reader preemptively
@@ -393,7 +386,7 @@ void lzw_emit_clear_code(void) {
       lzw_len_update();
     }
   }
-  emit(lzw_clear_code, lzw_length);
+  write_key(lzw_clear_code, lzw_length);
   lzw_encode_end();
 }
 
@@ -405,7 +398,7 @@ void lzw_encode_end(void) {
     return;
   }
   if (curr != root) {
-    emit(curr->key, lzw_length);
+    write_key(curr->key, lzw_length);
     curr = root;
   }
   if (bitwrite_buffer_size != 0) {
@@ -414,10 +407,10 @@ void lzw_encode_end(void) {
     // we just need to pad it so we can emit those 3 bits as part
     // of a larger byte.
     uint8_t bits_to_add = 8 - (bitwrite_buffer_size % 8);
-    emit(0, bits_to_add);
+    write_key(0, bits_to_add);
     ASSERT(bitwrite_buffer_size == 0);
   }
-  emit_buffer_flush();
+  write_buffer_flush();
 }
 
 void bitread_buffer_push_byte(uint8_t c) {
@@ -438,7 +431,7 @@ uint32_t bitread_buffer_pop_bits(uint32_t bitcount) {
 }
 
 // This will read the next bits up to our buffer.
-bool readbits(uint32_t *v) {
+bool read_bits(uint32_t *v) {
   while (bitread_buffer_size < lzw_length) {
     uint32_t c = lzw_read_byte();
     if (c == EOF) {
@@ -461,7 +454,7 @@ bool lzw_valid_key(uint32_t k) {
 size_t lzw_decode(size_t limit) {
   uint32_t curr_key;
   size_t read = 0;
-  while (read < limit && readbits(&curr_key)) {
+  while (read < limit && read_bits(&curr_key)) {
     DTRACE(DB_KEY_STREAM, "READKEY(%d):\t\t%d\t%s\n", lzw_length, curr_key,
            asbits(curr_key, lzw_length));
     if (curr_key == lzw_clear_code) {
@@ -481,7 +474,7 @@ size_t lzw_decode(size_t limit) {
     ASSERT(l);
     for (uint32_t i = 0; i < l; ++i) {
       DTRACE(DB_BYTE_STREAM, "EMITBYTE(decode):\t%#x\n", s[i]);
-      lzw_emit_byte(s[i]);
+      lzw_write_byte(s[i]);
     }
     lzw_bytes_written += l;
     read += l;
@@ -493,7 +486,7 @@ size_t lzw_decode(size_t limit) {
 
     // peek at the next string:
     DTRACE(DB_STATE, "DECODE(peek)\n");
-    if (!readbits(&curr_key)) {
+    if (!read_bits(&curr_key)) {
       DTRACE(DB_STATE, "DECODE(break)\n");
       // We're at EOF, so just early-out
       break;
@@ -524,6 +517,6 @@ size_t lzw_decode(size_t limit) {
     ASSERT(b != NEXT_CHAR_CONTINUE);
     curr = root;
   }
-  emit_buffer_flush();
+  write_buffer_flush();
   return read;
 }

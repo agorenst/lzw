@@ -44,7 +44,7 @@ void do_encode_stream() {
   lzw_init();
   while (lzw_encode(page_size)) {
     if (!feof(lzw_input_file)) {
-      lzw_emit_clear_code();
+      lzw_write_clear_code();
       total_stream_read += lzw_bytes_read;
       total_stream_written += lzw_bytes_written;
       lzw_destroy_state();

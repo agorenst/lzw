@@ -120,7 +120,7 @@ void encode_stream() {
         if (trace_ratio) {
           fprintf(ratio_log_file, "resetting %d\n", page_count);
         }
-        lzw_emit_clear_code();
+        lzw_write_clear_code();
         break; // this will lead to the destory-state and init on the back-edge
       }
     }
