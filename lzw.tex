@@ -1,0 +1,341 @@
+\documentclass{scrartcl}
+
+\usepackage{hyperref}
+\usepackage{cleveref}
+
+\usepackage{minted}
+\setminted{linenos=true}
+\setminted{frame=lines}
+\setminted{fontsize=\footnotesize}
+
+\author{Aaron Gorenstein}
+\title{Notes on an Intro to Industrial Programming}
+\subtitle{As Illustrated by an LZW Implementation}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+    I'm exploring using more advanced projects for empowering post-baccealaurette self-studies.
+    This is one such example.
+    I have (had) grand plans to make \emph{this very document} a resource to that end.
+    Practically speaking, however, I think I need to do this more first.
+    So this is more a collection of neat thing I'd want to use this LZW implementation to talk about.
+\end{abstract}
+
+\tableofcontents
+
+\section{Introduction}
+\paragraph{What Does This Give You?}
+This is \emph{not} going to be an introduction to how LZW works: there are plenty of good resources for that.
+This is a resource along two dimensions:
+\begin{enumerate}
+    \item Those who feel like they understand that introduction, but have questions about what implementation ``really looks like'' as you get to the nitty-gritty of an algorithm;
+    \item Those with an undergraduate or introductory background in programming and are curious to see how a homework-level implementation (as might be found on Rosetta code) can be taken to a more professional level.
+\end{enumerate}
+
+\paragraph{Why Trust Me?}
+I have no meaningful prior experience in understanding or implementing compression algorithms.
+I have a few years of graduate study in computational complexity theory (so I have some background on the formal, mathematical side of things), I spent the better part of a decade on the Microsoft C++ compiler (so I'm familiar with applying more formal computer science to industry, as well as industrial C-or-C++ programming), and most recently am trying out distributed systems at MongoDB (so I have my finger on the pulse of cool hip things).
+I have a great interest in teaching computer science, which I've pursued throughout my education and now with intermittent volunteer opportunities (some of which were quite extensive).
+
+The end result of the code here will \emph{not} be competitive with, say, \texttt{gzip}.
+However, it will employ a considerable number of performance-focused implementation and design decisions.
+In this way it can be understood as an intermediate step between homework and ``real program''.
+Having not implemented \texttt{gzip} (which, to be clear, has a different algorithm), of course, to a degree that this is a useful stepping stone is taken on faith.
+However, the actual design decisions I'll highlight (various \texttt{struct} design decisions, for instance) I've all used in various ``real'' production code.
+
+\paragraph{Why Write This?}
+I enjoy studying computer science, in particular exploring the boundary between theory, academia, and industry, and sharing what I learn.
+This write-up is partly my own notes so I feel like I will ``forever understand'' LZW to a deep degree, as well as an avenue to talk about some less common programming tricks in-situ.
+
+\section{Design Overview}
+Let's review how LZW-encoding works:
+\begin{itemize}
+    \item We're receiving a stream of bytes, and wish to emit a stream of bytes.
+    \item As we read in our input, we're constantly finding the longest-matching-prefix that we've seen-so-far.
+    \item Once we no longer have a previously-seen-prefix, we map this \emph{new} string (which differs from a previously-seen-prefix by the single, additional, final byte) to a new integer key.
+    \item We emit the key for the \emph{previous} prefix.
+    \item So, that is, we \emph{don't} emit the just-created new key: we instead restart the prefix-match process, starting with that final byte we used last time.
+    (Restarting with that newly-seen character is how the decoder is able to know which character it was.)
+    \item Available features (complications) include bounding the number of prefixes we save in our dictionary, resetting our dictionary (to help in cases where the input dramatically changes character ``halfway through'' compression), and variable-width encoding of keys.
+\end{itemize}
+An apparently-canonical implementation can be found on the internet.
+
+I'll introduce our implementation by comparison with the (single?) design that seems to pervade web resources.
+\begin{figure}[h]
+\begin{minted}{java}
+private static final int R = 256;        // number of input chars
+private static final int L = 4096;       // number of codewords = 2^W
+private static final int W = 12;         // codeword width
+
+// snip
+
+public static void compress() {
+    String input = BinaryStdIn.readString();
+    TST<Integer> st = new TST<Integer>();
+
+    // since TST is not balanced, it would be better to insert in a different order
+    for (int i = 0; i < R; i++)
+        st.put("" + (char) i, i);
+
+    int code = R+1;  // R is codeword for EOF
+
+    while (input.length() > 0) {
+        String s = st.longestPrefixOf(input);  // Find max prefix match s.
+        BinaryStdOut.write(st.get(s), W);      // Print s's encoding.
+        int t = s.length();
+        if (t < input.length() && code < L)    // Add s to symbol table.
+            st.put(input.substring(0, t + 1), code++);
+        input = input.substring(t);            // Scan past s in input.
+    }
+    BinaryStdOut.write(R, W);
+    BinaryStdOut.close();
+}
+\end{minted}
+\caption{A Textbook Implementation of LZW-Compress}\label{lst:textbook-lzw-compress}
+\end{figure}
+The listing in \cref{lst:textbook-lzw-compress}, taken from the web-resources for Sedgwick\footnote{The URL is \href{https://algs4.cs.princeton.edu/55compression/LZW.java.html}{here}} seems to express the common implementation.
+Of course it accurately implements (in this case) the simpler LZW variant with fixed-width (in this case, 12 bits) encoding.
+However, resources (mainly Wikipedia, but also that same Sedgwick site and the linked-to chapter on compression, \href{https://www.cs.cmu.edu/afs/cs/project/pscico-guyb/realworld/www/compression.pdf}{here}, and maybe even the original paper?) talks about variable-width.
+
+To be clear, this is obviously a fine implementation to learn LZW---and the more general algorithmic considerations of compression---with.
+My presentation here is better understood as a \emph{sequel} resource and topic: for those who want to learn more in an industrial perspective.
+So while we're about to list a number of deficiencies inherit in the code in \cref{lst:textbook-lzw-compress}, it's \emph{not} to its detriment.
+\begin{itemize}
+    \item The operation is blocking: that is, it will run until termination.
+          An alternative is some functionality that allows for partial processing, after which control is returned to the caller (which may, say, update a progress bar) which can then resume the next ``chunk'' of processing.
+          This plays a particular role in stability: if you give your program a blank check for as much memory needed to decompress something, you may end up using a \emph{lot} of memory.
+          So it's nice to say ``please decompress at most $X$ bytes'', or there-abouts.
+    \item More generally there is the notion of ``library support''.
+          We do have compression algorithms as stand-alone utilities, but you can also imagine a larger piece of software wanting to compress/decompress things in the course of its execution.
+          The previous point is just one example: it may be nice to expose settings and behaviors programmatically, for other software packages to use.
+    \item There is no debugging support.
+          While the conceit is that this is a ``finished'' algorithm and presumably once we're confident it its correctness we wouldn't do ongoing development, in practice that rarely happens.
+          We may want to add more logging, we may want to insert special hardware-specific subroutines, or something else.
+          Having trace statements, assertions, and similar is important and keeps future development, tractable.
+\end{itemize}
+
+The LZW implementation we'll develop here will have the following properties:
+\begin{enumerate}
+    \item Variable-width encodings.
+    \item Clear-codes, in which the encoder can put a distinguished key in the stream that tells the dictionary to reset to the default.
+    \item An interface design---this influences the \texttt{encode} and \texttt{decode}---that takes into account some practical applications (memory usage, etc.).
+    \item A harness of the library into a simple CLI program that can be used to compress, decompress, etc.
+    \item Extensive fuzzing and performance testing, and consequent (slight) performance focus.
+\end{enumerate}
+The core implementation is under 600 lines of \texttt{C} code, and corresponding driver less than 300, totalling to fewer than 1,000 lines of code for the full implementation.
+
+\section{Implementation Details}
+\subsection{Reading and Writing Bits and Bytes}
+We can typically only write bytes (that is, 8 bits) to a file at a time.
+If we encode a stream into 103 keys, each key being 9 bits long, we've set ourselves up for emitting 927 bits---obviously not neatly fitting into some number of bytes.
+
+Solving this problem can be a motivating introduction to bitwise tricks and using those more ``exotic'' operators like \texttt{\&}, \texttt{|}, and \texttt{<<}.
+We shall see that, with these tools, we can implement a way of \emph{buffering} up unusual-length-values into a 64-bit value, and then ``peel off'' 8-bit chunks from that buffer as needed.
+The complete implementation is in \cref{lst:bitwrite-impl}.
+
+\begin{figure}
+\begin{minted}[linenos=true]{c}
+uint64_t bitwrite_buffer = 0;
+uint32_t bitwrite_buffer_size = 0;
+const uint32_t BITWRITE_BUFFER_MAX_SIZE = sizeof(bitwrite_buffer) * 8;
+
+void bitwrite_buffer_push_bits(uint32_t v, uint8_t l) {
+  ASSERT(bitwrite_buffer_size + l < BITWRITE_BUFFER_MAX_SIZE);
+  uint32_t mask = (1 << l) - 1;
+  bitwrite_buffer = (bitwrite_buffer << l) | (v & mask);
+  bitwrite_buffer_size += l;
+}
+
+uint8_t bitwrite_buffer_pop_byte(void) {
+  ASSERT(bitwrite_buffer_size >= 8);
+  bitwrite_buffer_size -= 8;
+  uint8_t b = bitwrite_buffer >> bitwrite_buffer_size;
+  return b;
+}
+\end{minted}
+\caption{Bit Write Buffer Implementation}\label{lst:bitwrite-impl}
+\end{figure}
+
+Our actual ``buffer'', \texttt{bitwrite\_buffer}, is simply a 64-bit integer.
+We'll see over the course of our implementation that this basically restricts our key-length to 32-bit integers.
+
+%\begin{WrapText}
+\paragraph{Digression: Bounded-Size Buffers}
+At the onset of my programming journey I would be very uncomfortable with this: having implicit resource limits felt very ``vulnerable''.
+A program hitting a resource limit (such as, in this case, secretly trying to encode too many bits at once in our buffer) can lead to hard-to-investigate bugs and a lot of pain.
+So I would have gone to great pains to make some kind of resizable bit-buffer that could handle any number of bits.
+
+However, with experience I improved my intuition about which resource limits would actually be hit in development, and so I could feel more confident about ``putting things off'' for later.
+I also became more experienced with (or inured to?) investigating weird bugs and fixing them---still not something I sought out, but no longer a terror-in-the-dark.
+Lastly, you can see the most critical tool used here: \texttt{ASSERT} statements that will fail in the case the resource is exhausted.
+The flexibility to define ``solving'' the problem as ``telling the developer about it, and failing'' is a remarkably powerful one.
+Of course for commercial software it's unsatisfying, but for internal-facing projects like this it's great.
+%\end{WrapText}
+
+A maybe-unintuitive property is that we use the same emit bytebuffer in both the decode and encode cases.
+Maybe we can do something more optimally, then, in the decode/encode case, as we know that one direction of each isn't going to be variable-width.
+
+
+\paragraph{Buffered IO}
+This pattern of ``empty the buffer when we can't fit the next thing'' is pretty common.
+A common follow-on bug is forgetting to the flush the last thing.
+
+\begin{figure}
+\begin{minted}{c}
+#ifndef IO_BUFFER_SIZE
+#define IO_BUFFER_SIZE 4096
+#endif
+static uint8_t fwrite_buffer[IO_BUFFER_SIZE];
+static int emit_buffer_next = 0;
+void write_buffer_flush() {
+  fwrite(fwrite_buffer, 1, emit_buffer_next, lzw_output_file);
+  emit_buffer_next = 0;
+}
+void lzw_write_byte(uint8_t c) {
+  if (emit_buffer_next == sizeof(fwrite_buffer)) {
+    write_buffer_flush();
+  }
+  fwrite_buffer[emit_buffer_next++] = c;
+}
+\end{minted}
+\caption{Emitting Bytes}
+\end{figure}
+
+\begin{description}
+    \item[Why use a \texttt{\#define}?] 
+    Partly for nostalgia-esque old-fashioned, I suppose.
+    A lot of runtime options or flags or configuration can instead be compile-time.
+    You can imagine, if we were allocating \texttt{fwrite\_buffer} on the heap, we'd pass in the size as a runtime parameter.
+    Here, however, we want to reserve the space for the buffer in the process-level memory, so we can pass the size as a \emph{build} option: \texttt{gcc lzw.c -DIO\_BUFFER\_SIZE 10000}, for instance.
+    \item[Why have a buffer at all?] Semantically, we don't need the buffer at all: we can just call \texttt{fwrite} (or \texttt{fputc}) directly, one byte at a time.
+    There is the general intuition that doing things in batches is ``nicer'' for computers and leads to better performance: indeed on my machine it lead to a considerable improvement.
+
+    It's worth considering \emph{why} (as in, what is the actual mechanism that lead to a speedup) in such a case.
+    My initial hypothesis was that each \texttt{fputc} is a system call, and crossing that boundary is expensive.
+    However, using \texttt{strace} (a utility that logs every system call) shows that the system itself \emph{does} have a buffer (which is not too surprising) and so we actually have the same number of system calls.
+
+    This is a common challenge I've seen in performance work: people take the success of an optimization as proof that they're hypothesis is write: for this situation I don't know what actual mechanism changed to lead to a performance improvement, only that it's considerable!
+    This is a great homework problem, maybe.
+    If I wanted to spend more time on this I'd next hypothesis something about dynamic linking or indirect calls, but again I don't know.
+    \item[Any gotchas?] Yes, in particular we have to remember to flush this buffer, see what was do in \texttt{lzw\_encode\_end} in the listing at the end.
+\end{description}
+
+
+\subsection{Interlude: Modules versus Objects}
+The state of our program is all globals.
+This is weird---why do we we do this?
+It avoid heap allocations, which are nice, at the cost that you can only do this one at a time.
+It's not that bad---moreover, we can do more things compile-time.
+
+\subsection{State-Machine Based Dictionary}
+In the common internet example the dictionary is more-or-less literal.
+The TST object Sedgwick uses is some special-purpose tree that takes the head of the input remainder and will search it for as long as possible.
+To me this doesn't feel natural (though maybe his approach is the better one, ultimately!) because there's an aspect to how the \texttt{longestPrefixOf} method is what's (behind the call-site) consuming the input.
+
+(In particular, this doesn't lend to a natural API extension that permits the user to specify ``only encode the first $N$ bytes''.)
+
+\Cref{lst:my-input-code} shows how this code reads in input for encoding (compression), and in \cref{lst:my-dictionary} we see how taking the next bit (\texttt{c}) updates our \texttt{curr} node to either the next already-existing child in our tree, or allocate the new one.
+
+\begin{figure}
+\begin{minted}{c}
+size_t lzw_encode(size_t l) {
+  for (;;) {
+    int c = lzw_read_byte();
+    if (c == EOF) {
+      lzw_encode_end();
+      break;
+    }
+    if (lzw_next_char(c) != NEXT_CHAR_CONTINUE) // begin processing...
+\end{minted}
+\caption{The control-flow driving compression}\label{lst:my-input-code}
+\end{figure}
+
+
+\begin{figure}
+\begin{minted}{c}
+int lzw_next_char(uint8_t c) {
+  lzw_node_p next = children_set_find(&curr->children, c);
+  if (next) {
+    curr = next;
+    return NEXT_CHAR_CONTINUE;
+  }
+  if (lzw_max_key && lzw_next_key >= lzw_max_key) {
+    DTRACE(DB_STATE, "APPEND(%#x)\tMAXKEY\n", c);
+    return NEXT_CHAR_MAX;
+  }
+  // Else, allocate a new leaf in our tree.
+  // Note curr is NOT updated: we still need to emit the "old" prefix in this case.
+  const uint32_t k = lzw_next_key++;
+  next = children_set_allocate(&curr->children, c, k);
+  lzw_data[k].parent = next;
+  return NEXT_CHAR_NEW;
+}
+\end{minted}
+\caption{Evolving our dictionary object}\label{lst:my-dictionary}
+\end{figure}
+
+So the dictionary is pretty important.
+Intuitively, that's the thing we're really generating, and using, a lot.
+
+\subsection{Data Structure Design}
+The structure is pretty exotic.
+Behold this diagram:
+
+\paragraph{Short String Optimization}
+We save a lot of memory with that crazy union thing.
+This is definitely a case where we have to decide on a heuristic: in industry figuring out the right way to ``define success'' (including how to update that defition!) is the most important thing.
+\subsection{Feature: Clear Codes}
+This was a bear to get the coordination right: I hadn't anticipated the subtle issue about increasing the length as if it's a new key.
+
+It's also weird that it counts as bytes we encode/decode.
+\subsection{Using our Features: EMA}
+Learned that trick from my SAT solver.
+It's actually really nice! From my motivating input it definitely worked.
+Dream: avoid having to emit clear codes at all.
+I was really close, but coordinating the implicit state was even worse.
+Maybe that's a homework problem?
+\subsection{Debugging Support}
+See the trace statements?
+Articulating the streams as emitting keys, and emitting logical bits, and then emitted physical bytes, was very useful for debugging.
+Supplementary tools: parse and compose log statements.
+\section{Testing: Fuzzing}
+Fuzzing was a lot of fun!
+It was more a quick way to determine that nothing regressed, but also found some awful edge-cases with clear-codes.
+Frustration: lack of tooling for futzing with command line parameters, basically.
+\section{Performance}
+I don't get hardware counters.
+There's encoding speed-and-memory-usage, decoding speed-and-memory-usage, and compression ratio.
+With some futzing I did ``ok'' compared to gzip on our motivating input.
+Still much slower, not sure why: presumably data structure is just bad, but would want hardware counters.
+\paragraph{Attribution Problem in Perfomance}
+I worked on a project where our software supported multiple workloads, call them A, B, C, etc.
+One workload, P, was both \emph{extremely popular} and also \emph{very resource intensive}.
+A single process could be working on multiple workloads at once.
+A common refrain I had to push back against was ``oh, every single crash/resource-exhaustion is attributable to P''.
+On the one hand that's a reasonable starting point, but tautologically \emph{every} trace of a process is going to include a P: it was by far the most common one.
+I'm sure there's some cutesy statistical phrasing for this behavior, but this was a surprising example of heuristics biting people---often the issue was some other, less-exercised workload.
+(Nevermind the higher-level issues of load-balancing etc.)
+\subsection{Compression Ratio}
+This is trying to be the ``textbook definition'', so except up to EMA stuff I didn't expect much improvement.
+That EMA really helps is very cool.
+\subsection{Throughput}
+Need hardware counters! I can continue to guess what's wrong, but it's just not productive (or satisfying).
+\section{What's Next?}
+\begin{itemize}
+    \item Getting hardware counters to help inform performance work.
+    \item It's not clear if, e.g., setting the max key to 1024 would basically induce an off-by-one in our max-length (we should only need 10 bits for each symbol, but we may accidentally get up to 11).
+    \item I'd like to actually use this as a library for another project.
+    That may mean making it more ``ergonomic'' (and better) to use the EMA stuff (as in, provide it for those users).
+    It may also, sadly, mean that I should change this from a module to an object, so we actually have multiple such threads going on at once, haha.
+\end{itemize}
+\section{Industrial Comparison}
+A homework assignment is to compare this to a real compression algorithm.
+\appendix
+\section{Core Library Implementation}
+\inputminted[fontsize=\small,linenos=true]{C}{lzw.c}
+\section{Command Line Implementation}
+\inputminted[fontsize=\small,linenos=true]{C}{lzw_main.c}
+
+\end{document}
